@@ -41,19 +41,23 @@ RUN java -Djarmode=tools -jar app.jar extract --layers --launcher
 
 # ---- Stage 3: minimal runtime ----
 FROM eclipse-temurin:21-jre-alpine AS runtime
+
+# Patch OS packages at build time so the image picks up security fixes
+# (e.g. p11-kit CVE-2026-2100) that landed in Alpine after the base image
+# was published. Keeps the Trivy HIGH/CRITICAL gate green without suppressing findings.
+RUN apk upgrade --no-cache
+
 WORKDIR /app
 
-# Run as a non-root user — least privilege, and required by hardened k8s setups.
 RUN addgroup -S northwind && adduser -S northwind -G northwind
 
-# Copy the extracted layers from least- to most-frequently-changing so Docker
-# layer caching is maximally effective.
 COPY --from=extract /app/app/dependencies/ ./
 COPY --from=extract /app/app/spring-boot-loader/ ./
 COPY --from=extract /app/app/snapshot-dependencies/ ./
 COPY --from=extract /app/app/application/ ./
 
 USER northwind
+
 EXPOSE 8080
 
 ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
@@ -61,7 +65,4 @@ ENV JAVA_TOOL_OPTIONS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
 HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/actuator/health || exit 1
 
-# After a layered '--launcher' extraction there is no single runnable jar, so we
-# invoke Spring Boot's launcher class directly. Note the '.launch.' package —
-# relocated in Spring Boot 3.2+ (this project is on 4.1.0).
 ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]
