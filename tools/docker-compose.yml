@@ -1,0 +1,53 @@
+# ============================================================================
+# Local CI stack for the Northwind Quote project: Jenkins + SonarQube.
+# Both run as containers on your laptop. Jenkins builds images via DooD
+# (host Docker socket mounted in). Named volumes persist config across restarts.
+#
+#   Start:  docker compose -f tools/docker-compose.yml up -d --build
+#   Stop:   docker compose -f tools/docker-compose.yml down       (keeps volumes)
+#   Wipe:   docker compose -f tools/docker-compose.yml down -v    (deletes data)
+# ============================================================================
+services:
+  jenkins:
+    build:
+      context: ./jenkins
+    image: northwind-jenkins:local
+    container_name: northwind-jenkins
+    restart: unless-stopped
+    ports:
+      - "8081:8080"     # Jenkins UI on host :8081 (8080 is used by the app locally)
+      - "50000:50000"   # agent port (unused now, harmless)
+    volumes:
+      - jenkins_home:/var/jenkins_home
+      # DooD: let Jenkins' docker CLI talk to the host Docker Desktop engine.
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - ci
+
+  sonarqube:
+    image: sonarqube:community
+    container_name: northwind-sonarqube
+    restart: unless-stopped
+    # SonarQube's embedded Elasticsearch needs a higher mmap count than the
+    # Docker Desktop default. This sets it inside the container's context.
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - "9000:9000"
+    volumes:
+      - sonarqube_data:/opt/sonarqube/data
+      - sonarqube_extensions:/opt/sonarqube/extensions
+      - sonarqube_logs:/opt/sonarqube/logs
+    networks:
+      - ci
+
+volumes:
+  jenkins_home:
+  sonarqube_data:
+  sonarqube_extensions:
+  sonarqube_logs:
+
+networks:
+  ci:
