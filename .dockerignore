@@ -1,0 +1,42 @@
+# Build output (the image builds its own JAR inside; never copy a host-built one in)
+target/
+
+# Maven wrapper downloaded jar (the .properties is enough; jar is fetched in-build)
+.mvn/wrapper/maven-wrapper.jar
+
+# Version control & CI
+.git/
+.gitignore
+.github/
+
+# IDE / editor
+.idea/
+*.iml
+.vscode/
+.settings/
+.project
+.classpath
+
+# Terraform (added later phases) — never part of the app image
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# Local CI tooling (Phase 2+)
+tools/
+jenkins_home/
+sonarqube_data/
+
+# Secrets / keys
+*.pem
+*.key
+*.kubeconfig
+
+# Docs / k8s manifests — not needed inside the app image
+docs/
+k8s/
+
+# OS junk
+.DS_Store
+Thumbs.db

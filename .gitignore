@@ -1,0 +1,48 @@
+# ===== Maven / Java build output =====
+target/
+*.jar
+*.war
+*.class
+
+# ===== Maven wrapper (keep the wrapper itself; ignore any downloaded dist) =====
+.mvn/wrapper/maven-wrapper.jar
+
+# ===== IDE / editor =====
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.project
+.classpath
+*.swp
+*~
+
+# ===== OS junk =====
+.DS_Store
+Thumbs.db
+
+# ===== Terraform (added in Phase 4, ignored now so it's never an afterthought) =====
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# ===== Secrets / keys (never commit) =====
+*.pem
+*.key
+kubeconfig
+*.kubeconfig
+
+# ===== Local CI volumes / scratch (Phase 2+) =====
+jenkins_home/
+sonarqube_data/
