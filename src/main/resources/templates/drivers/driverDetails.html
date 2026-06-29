@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+
+<html xmlns:th="https://www.thymeleaf.org" th:replace="~{fragments/layout :: layout (~{::body},'drivers')}">
+
+<body>
+
+  <h2><i class="bi bi-person-vcard me-2"></i><span th:text="#{driverInformation}">Driver Information</span></h2>
+
+  <div th:if="${message}" class="alert alert-success d-flex align-items-center" id="success-message">
+    <i class="bi bi-check-circle-fill me-2"></i><span th:text="${message}"></span>
+  </div>
+
+  <div th:if="${error}" class="alert alert-danger d-flex align-items-center" id="error-message">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i><span th:text="${error}"></span>
+  </div>
+
+  <div class="card shadow-sm mb-4" th:object="${driver}">
+    <div class="card-body p-4">
+      <h4 class="card-title mb-3" th:text="*{firstName + ' ' + lastName}">Full Name</h4>
+      <div class="row g-3 detail-grid">
+        <div class="col-md-6">
+          <i class="bi bi-geo-alt text-primary me-2"></i>
+          <span th:text="*{address} + ', ' + *{city} + ' ' + *{postalCode}"></span>
+        </div>
+        <div class="col-md-6">
+          <i class="bi bi-telephone text-primary me-2"></i>
+          <span th:text="*{telephone}"></span>
+        </div>
+        <div class="col-md-6">
+          <i class="bi bi-calendar3 text-primary me-2"></i>
+          <span th:text="#{dateOfBirth}">Date of Birth</span>:
+          <span th:text="${#temporals.format(driver.dateOfBirth, 'yyyy-MM-dd')}"></span>
+        </div>
+        <div class="col-md-6">
+          <i class="bi bi-award text-primary me-2"></i>
+          <span th:text="#{licenseYearsHeld}">Years Licensed</span>:
+          <span th:text="*{licenseYearsHeld}"></span>
+        </div>
+      </div>
+
+      <div class="mt-4 d-flex gap-2 flex-wrap">
+        <a th:href="@{__${driver.id}__/edit}" class="btn btn-outline-primary">
+          <i class="bi bi-pencil me-1"></i><span th:text="#{updateDriver}">Edit Driver</span>
+        </a>
+        <a th:href="@{__${driver.id}__/vehicles/new}" class="btn btn-primary">
+          <i class="bi bi-plus-circle me-1"></i><span th:text="#{addNewVehicle}">Add New Vehicle</span>
+        </a>
+        <a th:href="@{__${driver.id}__/quotes}" class="btn btn-outline-secondary">
+          <i class="bi bi-clock-history me-1"></i><span th:text="#{quoteHistory}">Quote History</span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <h4 class="mb-3"><i class="bi bi-car-front me-2"></i><span th:text="#{vehicles}">Vehicles</span></h4>
+
+  <div class="row g-3">
+    <div class="col-md-6" th:each="vehicle : ${driver.vehicles}">
+      <div class="card h-100 shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title" th:text="${vehicle.displayName}">Vehicle</h5>
+          <p class="card-text text-muted mb-1">
+            <i class="bi bi-signpost-2 me-1"></i><span th:text="${vehicle.usageType.displayName}"></span>
+          </p>
+          <p class="card-text text-muted">
+            <i class="bi bi-speedometer2 me-1"></i><span th:text="${vehicle.annualMileage} + ' km/yr'"></span>
+          </p>
+          <div class="d-flex gap-2">
+            <a th:href="@{__${driver.id}__/vehicles/__${vehicle.id}__/edit}" class="btn btn-sm btn-outline-secondary">
+              <i class="bi bi-pencil me-1"></i><span th:text="#{editVehicle}">Edit Vehicle</span>
+            </a>
+            <a th:href="@{__${driver.id}__/quotes/new}" class="btn btn-sm btn-success">
+              <i class="bi bi-clipboard-check me-1"></i><span th:text="#{getQuote}">Get a Quote</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function hideMessages() {
+      setTimeout(function () {
+        var success = document.getElementById("success-message");
+        var error = document.getElementById("error-message");
+        if (success) { success.style.display = "none"; }
+        if (error) { error.style.display = "none"; }
+      }, 3000);
+    }
+
+    hideMessages();
+  </script>
+
+</body>
+
+</html>

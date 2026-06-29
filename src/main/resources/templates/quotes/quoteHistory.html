@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+
+<html xmlns:th="https://www.thymeleaf.org" th:replace="~{fragments/layout :: layout (~{::body},'drivers')}">
+
+<body>
+
+  <h2><i class="bi bi-clock-history me-2"></i><span th:text="#{quoteHistory}">Quote History</span></h2>
+
+  <div th:if="${quoteHistory.isEmpty()}" class="card shadow-sm text-center py-5">
+    <div class="card-body">
+      <i class="bi bi-receipt-cutoff display-4 text-muted"></i>
+      <p class="mt-3 mb-0 text-muted">No quotes have been generated yet.</p>
+    </div>
+  </div>
+
+  <div class="card shadow-sm" th:if="${not quoteHistory.isEmpty()}">
+    <div class="table-responsive">
+      <table id="quotes" class="table table-striped table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Date</th>
+            <th th:text="#{vehicle}">Vehicle</th>
+            <th th:text="#{liabilityLimit}">Liability Limit</th>
+            <th th:text="#{deductible}">Deductible</th>
+            <th th:text="#{annualPremium}">Estimated Annual Premium</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr th:each="quote : ${quoteHistory}">
+            <td th:text="${#temporals.format(quote.createdAt, 'yyyy-MM-dd HH:mm')}"></td>
+            <td th:text="${quote.vehicle.displayName}"></td>
+            <td th:text="${quote.liabilityLimit.displayName}"></td>
+            <td th:text="${quote.deductible.displayName}"></td>
+            <td>
+              <a th:href="@{/drivers/__${quote.driver.id}__/quotes/__${quote.id}__}" class="fw-semibold text-decoration-none"
+                th:text="${'$' + #numbers.formatDecimal(quote.annualPremium, 1, 2)}"></a>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</body>
+
+</html>

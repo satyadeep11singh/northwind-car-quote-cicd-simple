@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+
+<html xmlns:th="https://www.thymeleaf.org" th:replace="~{fragments/layout :: layout (~{::body},'drivers')}">
+
+<body>
+
+  <h2><i class="bi bi-person-vcard me-2"></i><span th:text="#{driver}">Driver</span></h2>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-4">
+      <form th:object="${driver}" id="add-driver-form" method="post">
+        <div class="row">
+          <div class="col-md-6">
+            <input th:replace="~{fragments/inputField :: input (#{firstName}, 'firstName', 'text')}" />
+          </div>
+          <div class="col-md-6">
+            <input th:replace="~{fragments/inputField :: input (#{lastName}, 'lastName', 'text')}" />
+          </div>
+        </div>
+        <input th:replace="~{fragments/inputField :: input (#{address}, 'address', 'text')}" />
+        <div class="row">
+          <div class="col-md-6">
+            <input th:replace="~{fragments/inputField :: input (#{city}, 'city', 'text')}" />
+          </div>
+          <div class="col-md-6">
+            <input th:replace="~{fragments/inputField :: input (#{postalCode}, 'postalCode', 'text')}" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-6">
+            <input th:replace="~{fragments/inputField :: input (#{telephone}, 'telephone', 'text')}" />
+          </div>
+          <div class="col-md-6">
+            <input th:replace="~{fragments/inputField :: input (#{dateOfBirth}, 'dateOfBirth', 'date')}" />
+          </div>
+        </div>
+        <input th:replace="~{fragments/inputField :: input (#{licenseYearsHeld}, 'licenseYearsHeld', 'number')}" />
+
+        <button th:with="text=${driver['new']} ? #{addDriver} : #{updateDriver}" class="btn btn-primary mt-2" type="submit">
+          <i class="bi bi-check-circle me-1"></i><span th:text="${text}">Add Driver</span>
+        </button>
+      </form>
+    </div>
+  </div>
+</body>
+
+</html>

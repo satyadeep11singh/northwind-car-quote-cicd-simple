@@ -1,0 +1,99 @@
+/*
+ * Northwind Mutual branding on top of Bootstrap 5's real component classes
+ * (cards, floating labels, validation states) rather than dead Bootstrap-3
+ * class names. Deliberately light-touch - most styling comes from using
+ * Bootstrap correctly, not from overriding it.
+ */
+
+:root {
+  --nm-navy: #0b3d62;
+  --nm-navy-dark: #092f4d;
+}
+
+body {
+  background-color: #f6f8fa;
+}
+
+.navbar {
+  background-color: var(--nm-navy);
+}
+
+.navbar-brand {
+  color: #ffffff !important;
+  font-weight: 600;
+}
+
+.nm-container {
+  margin-top: 24px;
+  margin-bottom: 48px;
+}
+
+h2 {
+  color: var(--nm-navy);
+  margin-bottom: 1.25rem;
+}
+
+.card {
+  border: none;
+  border-radius: 0.75rem;
+}
+
+.hero-banner {
+  background: linear-gradient(135deg, var(--nm-navy), var(--nm-navy-dark));
+}
+
+.step-card {
+  border: 1px solid #e6e9ec;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.step-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.08);
+}
+
+.detail-grid i {
+  width: 1.25rem;
+}
+
+.btn-primary {
+  background-color: var(--nm-navy);
+  border-color: var(--nm-navy);
+}
+
+.btn-primary:hover,
+.btn-primary:focus {
+  background-color: var(--nm-navy-dark);
+  border-color: var(--nm-navy-dark);
+}
+
+.btn-outline-primary {
+  color: var(--nm-navy);
+  border-color: var(--nm-navy);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--nm-navy);
+  border-color: var(--nm-navy);
+}
+
+.badge.text-bg-primary {
+  background-color: var(--nm-navy) !important;
+}
+
+.nav-link.active {
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.form-floating > label {
+  color: #6c757d;
+}
+
+.premium-card {
+  background: linear-gradient(135deg, var(--nm-navy), var(--nm-navy-dark));
+}
+
+.table-active td, .table-active th {
+  background-color: #eaf2f8;
+}

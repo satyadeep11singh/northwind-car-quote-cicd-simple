@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+
+<html xmlns:th="https://www.thymeleaf.org" th:replace="~{fragments/layout :: layout (~{::body},'drivers')}">
+
+<body>
+
+  <h2>
+    <i class="bi bi-car-front me-2"></i>
+    <th:block th:if="${vehicle['new']}" th:text="#{new}">New </th:block>
+    <span th:text="#{vehicle}">Vehicle</span>
+  </h2>
+
+  <div class="card shadow-sm">
+    <div class="card-body p-4">
+      <p class="mb-3">
+        <span class="text-muted" th:text="#{driver}">Driver</span>:
+        <span class="badge text-bg-primary fs-6" th:text="${driver?.firstName + ' ' + driver?.lastName}">Driver Name</span>
+      </p>
+
+      <form th:object="${vehicle}" method="post">
+        <input type="hidden" name="id" th:value="*{id}" />
+        <div class="row">
+          <div class="col-md-4">
+            <input th:replace="~{fragments/inputField :: input (#{modelYear}, 'modelYear', 'number')}" />
+          </div>
+          <div class="col-md-4">
+            <input th:replace="~{fragments/inputField :: input (#{make}, 'make', 'text')}" />
+          </div>
+          <div class="col-md-4">
+            <input th:replace="~{fragments/inputField :: input (#{model}, 'model', 'text')}" />
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-md-6">
+            <input th:replace="~{fragments/selectField :: selectWithDisplayName (#{usageType}, 'usageType', ${usageTypes})}" />
+          </div>
+          <div class="col-md-6">
+            <input th:replace="~{fragments/inputField :: input (#{annualMileage}, 'annualMileage', 'number')}" />
+          </div>
+        </div>
+
+        <button th:with="text=${vehicle['new']} ? #{addNewVehicle} : #{editVehicle}" class="btn btn-primary mt-2" type="submit">
+          <i class="bi bi-check-circle me-1"></i><span th:text="${text}">Add Vehicle</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+</body>
+
+</html>

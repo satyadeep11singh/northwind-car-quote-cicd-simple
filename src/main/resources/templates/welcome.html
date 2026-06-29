@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+
+<html xmlns:th="https://www.thymeleaf.org" th:replace="~{fragments/layout :: layout (~{::body},'home')}">
+
+<body>
+
+  <div class="p-4 p-md-5 mb-4 rounded-3 text-bg-dark hero-banner">
+    <div class="col-lg-8 px-0">
+      <h1 class="display-6 fw-bold" th:text="#{welcome}">Welcome</h1>
+      <p class="lead">
+        Northwind Mutual's car insurance quote generator. Search for an existing driver, or
+        <a th:href="@{/drivers/new}" class="link-light link-offset-2 fw-semibold">add a new driver</a> to get started.
+      </p>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <div class="col-md-3">
+      <div class="card h-100 text-center step-card">
+        <div class="card-body">
+          <i class="bi bi-person-plus display-6 text-primary"></i>
+          <h6 class="card-title mt-3">1. Add a driver</h6>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card h-100 text-center step-card">
+        <div class="card-body">
+          <i class="bi bi-car-front display-6 text-primary"></i>
+          <h6 class="card-title mt-3">2. Add a vehicle</h6>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card h-100 text-center step-card">
+        <div class="card-body">
+          <i class="bi bi-clipboard-check display-6 text-primary"></i>
+          <h6 class="card-title mt-3">3. Choose coverage</h6>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-3">
+      <div class="card h-100 text-center step-card">
+        <div class="card-body">
+          <i class="bi bi-receipt display-6 text-primary"></i>
+          <h6 class="card-title mt-3">4. See the breakdown</h6>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>

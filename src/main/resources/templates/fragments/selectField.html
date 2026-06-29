@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+
+<html xmlns:th="https://www.thymeleaf.org">
+
+<body>
+  <form>
+    <th:block th:fragment="select (label, name, items)">
+      <div class="form-floating mb-3">
+        <select th:field="*{__${name}__}" th:id="${name}"
+          th:class="${#fields.hasErrors(name)} ? 'form-select is-invalid' : 'form-select'">
+          <option th:each="item : ${items}" th:value="${item}" th:text="${item}">item</option>
+        </select>
+        <label th:for="${name}" th:text="${label}">Label</label>
+        <div class="invalid-feedback" th:if="${#fields.hasErrors(name)}" th:errors="*{__${name}__}">Error</div>
+      </div>
+    </th:block>
+
+    <!--
+      Variant for enums that have a separate display label (e.g. VehicleUsageType,
+      LiabilityLimit, Deductible): submits the enum constant name as the form
+      value, but shows the friendly displayName text to the user.
+    -->
+    <th:block th:fragment="selectWithDisplayName (label, name, items)">
+      <div class="form-floating mb-3">
+        <select th:field="*{__${name}__}" th:id="${name}"
+          th:class="${#fields.hasErrors(name)} ? 'form-select is-invalid' : 'form-select'">
+          <option th:each="item : ${items}" th:value="${item}" th:text="${item.displayName}">item</option>
+        </select>
+        <label th:for="${name}" th:text="${label}">Label</label>
+        <div class="invalid-feedback" th:if="${#fields.hasErrors(name)}" th:errors="*{__${name}__}">Error</div>
+      </div>
+    </th:block>
+  </form>
+</body>
+
+</html>
