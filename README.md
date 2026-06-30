@@ -36,10 +36,10 @@ environment problem in seconds instead of guessing.
 
 ### Project status
 
-The app layer and the CI half of the pipeline (build through image scan) are complete and
-verified, running entirely on free, local Docker containers — zero Azure spend so far.
-The CD half (push to ACR, deploy to AKS) is the next phase; see
-[On the horizon](#on-the-horizon).
+The full CI/CD pipeline is complete and verified end-to-end: app build → test → Sonar
+quality gate → Docker cross-build (ARM64) → Trivy scan → push to ACR → deploy to AKS →
+smoke check. Infra (ACR + AKS) is torn down between sessions and reprovisioned via
+Terraform when needed.
 
 ---
 
@@ -60,13 +60,14 @@ during development.
 
 ```
 Checkout → Build & Test → SonarQube Analysis → Quality Gate → Docker Build → Trivy Scan
+         → Push to ACR → Deploy to AKS → Smoke Check
 ```
 
 Each stage gates the next: tests must pass before Sonar analysis runs, the quality gate
-must pass before an image is built, and the image must scan clean before the pipeline
-reports success. ACR push and AKS deploy stages are not yet in the Jenkinsfile — the
-pipeline currently stops at "image built and scanned," proving the entire build-quality
-half with zero Azure spend.
+must pass before an image is built, and the image must scan clean before it's pushed.
+The three CD stages (Push to ACR, Deploy to AKS, Smoke Check) are gated behind a
+`DEPLOY_ENABLED` pipeline parameter so the CI half can run standalone against the free
+local stack, and the full 9-stage run fires only when infra is provisioned.
 
 ![Pipeline flow diagram](./docs/architecture-pipeline.png)
 <!-- TODO: draw.io export — six pipeline stages, what each produces/consumes, gate points -->
@@ -132,17 +133,11 @@ tests cover the rating logic; `./mvnw test` passes 10/10. Actuator exposes
 (`management.endpoint.health.probes.add-additional-paths=true`) — wired in ahead of time
 for the AKS liveness/readiness probes planned in Phase 8.
 
-![App welcome page](./docs/app-ui-welcome.png)
-<!-- TODO: capture -->
-
 ![Quote request form](./docs/app-ui-quote-form.png)
-<!-- TODO: capture -->
 
 ![Quote result with rating breakdown](./docs/app-ui-quote-result.png)
-<!-- TODO: capture -->
 
 ![Unit tests passing](./docs/app-tests-passing.png)
-<!-- TODO: capture -->
 
 ---
 
@@ -185,23 +180,14 @@ without adding signal.
 | **Deploy to AKS** *(gated)* | `az aks get-credentials` then `kubectl apply` of `k8s/service.yaml` and `k8s/deployment.yaml` (image tag substituted in), waits on `kubectl rollout status` |
 | **Smoke Check** *(gated)* | Port-forwards the new Service and curls `/actuator/health/readiness`, confirming the rollout actually answers traffic, not just that Kubernetes reports it healthy |
 
-The three *(gated)* stages are written and present in the Jenkinsfile now but skipped
-unless the `DEPLOY_ENABLED` pipeline parameter is set to `true` — there is no ACR or AKS
-to deploy to yet (see [On the horizon](#on-the-horizon)). Writing them ahead of the
-infrastructure means the CD logic is reviewed and ready to flip on the moment Phase 7
-exists, rather than written under pressure once billable resources are already running.
-
 Pipeline options: `timestamps()`, a 30-minute overall timeout, and
 `disableConcurrentBuilds()` so overlapping runs can't race each other.
 
-![Jenkins pipeline, all stages green](./docs/jenkins-pipeline-stages-green.png)
-<!-- TODO: capture -->
+![Jenkins CD pipeline, all 9 stages green](./docs/jenkins-pipeline-cd-stages-green.png)
 
 ![SonarQube quality gate passed](./docs/sonarqube-quality-gate-passed.png)
-<!-- TODO: capture -->
 
 ![Trivy scan, zero findings](./docs/trivy-scan-clean.png)
-<!-- TODO: capture -->
 
 ### Local CI stack
 
@@ -212,14 +198,9 @@ on Azure infrastructure — see [Cost-conscious design](#cost-conscious-design).
 docker compose -f tools/docker-compose.yml up -d --build
 ```
 
-![docker ps showing the full local stack running](./docs/docker-ps-stack-running.png)
-<!-- TODO: capture -->
-
 ![Jenkins dashboard](./docs/jenkins-dashboard.png)
-<!-- TODO: capture -->
 
 ![SonarQube dashboard](./docs/sonarqube-dashboard.png)
-<!-- TODO: capture -->
 
 ---
 
@@ -239,12 +220,6 @@ and disable system-locale fallback (`spring.messages.fallback-to-system-locale=f
 result: `en`/`en_CA`/`en_US` all resolve predictably without depending on implicit
 behavior.
 
-![i18n fallback bug](./docs/problem-i18n-fallback-before.png)
-<!-- TODO: capture -->
-
-![i18n fallback fixed](./docs/problem-i18n-fallback-after.png)
-<!-- TODO: capture -->
-
 ### 2. `NULL not allowed for DRIVER_ID`
 
 Saving a `Vehicle` failed with a not-null constraint violation on `DRIVER_ID`. The
@@ -253,26 +228,15 @@ relationship between `Driver` and `Vehicle` wasn't being persisted from both sid
 Driver↔Vehicle relationship genuinely bidirectional, with the `Vehicle` side responsible
 for setting its `Driver` reference before save.
 
-![Driver/Vehicle null error](./docs/problem-driver-id-null-error.png)
-<!-- TODO: capture -->
-
-![Driver/Vehicle save fixed](./docs/problem-driver-id-null-fixed.png)
-<!-- TODO: capture -->
-
 ### 3. Trivy CVE finding in the base image (`p11-kit` CVE-2026-2100)
 
 The first Trivy scan against the runtime image surfaced a HIGH-severity finding in
 `p11-kit`, a package that ships with Alpine but wasn't yet patched in the
-`eclipse-temurin:21-jre-alpine` base image as published. Rather than suppress or ignore
-the finding, the runtime stage now runs `apk upgrade --no-cache` at build time, picking up
-whatever OS security fixes have landed in Alpine's package repos since the base image was
-published — keeping the Trivy gate green without weakening it.
-
-![Trivy CVE finding before fix](./docs/problem-trivy-cve-before.png)
-<!-- TODO: capture -->
-
-![Trivy scan clean after fix](./docs/problem-trivy-cve-after.png)
-<!-- TODO: capture -->
+`eclipse-temurin:21-jre-alpine` base image as published. The fix exists in Alpine's
+package repos (`0.26.2-r0`) but can't be applied via `apk upgrade` at cross-build time
+because QEMU emulation prevents executing Alpine binaries on this host (see problem #9).
+The finding is suppressed in `.trivyignore` with a documented rationale and will be
+removed once the upstream base image ships the patched package.
 
 ### 4. Layered JAR extraction needs the `JarLauncher` entrypoint
 
@@ -281,12 +245,6 @@ layer caching), the obvious `ENTRYPOINT ["java", "-jar", "app.jar"]` no longer w
 there is no single `app.jar` after extraction, just a directory of layers. The fix:
 `ENTRYPOINT ["java", "org.springframework.boot.loader.launch.JarLauncher"]`, which is
 exactly what the extracted layers are structured for.
-
-![Container failing with plain java -jar](./docs/problem-jarlauncher-failure.png)
-<!-- TODO: capture -->
-
-![Container starting cleanly with JarLauncher](./docs/problem-jarlauncher-fixed.png)
-<!-- TODO: capture -->
 
 ### 5. Jenkins couldn't reach the Docker socket (Docker Desktop / WSL2)
 
@@ -297,9 +255,6 @@ the socket. A user-level `usermod -aG docker jenkins`-style fix inside the image
 **not** work here, because the socket's owning GID inside Docker Desktop's WSL2 VM doesn't
 match any group baked into the image at build time.
 
-![Docker socket permission error](./docs/problem-docker-socket-perms.png)
-<!-- TODO: capture -->
-
 ### 6. SonarQube quality gate hung at `PENDING`
 
 The Quality Gate stage timed out waiting for a webhook callback that never arrived.
@@ -307,12 +262,6 @@ SonarQube only calls back to Jenkins if a webhook is explicitly configured — t
 creating one in SonarQube pointed at `http://jenkins:8080/sonarqube-webhook/` (the
 container's internal hostname/port on the shared `ci` network, not the host-mapped
 `8081`). Once configured, the gate result returns within seconds of analysis completing.
-
-![Quality gate stuck pending](./docs/problem-sonar-webhook-pending.png)
-<!-- TODO: capture -->
-
-![Quality gate resolving after webhook fix](./docs/problem-sonar-webhook-fixed.png)
-<!-- TODO: capture -->
 
 ### 7. Azure CLI apt repo has no Debian Trixie release
 
@@ -323,12 +272,6 @@ resolved to `trixie`, which produced a 404 from Microsoft's package server and a
 failure. The fix: pin the apt source line to `bookworm` explicitly rather than letting
 `$VERSION_CODENAME` resolve dynamically. This installs az CLI 2.87.0 cleanly from
 the bookworm release, which is ABI-compatible with Trixie.
-
-![Azure CLI Trixie build failure](./docs/problem-azcli-trixie-failure.png)
-<!-- TODO: capture -->
-
-![Azure CLI installed successfully after bookworm pin](./docs/problem-azcli-trixie-fixed.png)
-<!-- TODO: capture -->
 
 ### 8. ARM64 image crash-loops with `exec format error`
 
@@ -342,9 +285,6 @@ Fix: switch to `docker buildx build --platform linux/arm64 --load`, which cross-
 the runtime stage for ARM64 using QEMU emulation via Docker Desktop's built-in binfmt
 support. This requires the `docker-buildx-plugin` package (not included in `docker-ce-cli`
 alone) — added to the Jenkins image.
-
-![ARM64 exec format error in AKS](./docs/problem-arm64-exec-format-error.png)
-<!-- TODO: capture -->
 
 ### 9. QEMU can't execute Alpine binaries during ARM64 cross-build (`apk upgrade`, `adduser`)
 
@@ -361,9 +301,6 @@ patched CVE-2026-2100 (`p11-kit`) cannot be run under QEMU, so it is suppressed 
 `.trivyignore` with a documented rationale — the fix exists in Alpine's package repos but
 isn't yet published in the base image, and patching it in-flight is blocked by the QEMU
 limitation.
-
-![QEMU Alpine build failure](./docs/problem-qemu-alpine-run-failure.png)
-<!-- TODO: capture -->
 
 ---
 
