@@ -316,6 +316,22 @@ limitation.
   every apply and an empty resource group before ending each session — the same discipline
   used across this portfolio.
 
+![Terraform apply — 7 resources created](./docs/terraform-apply-success.png)
+
+![Portal resource group — ACR, AKS, VNet](./docs/portal-resource-group-overview.png)
+
+![Portal ACR overview](./docs/portal-acr-overview.png)
+
+![AKS workloads — 2/2 pods running](./docs/portal-aks-workloads.png)
+
+![ACR image tag pushed by pipeline](./docs/acr-image-pushed.png)
+
+![kubectl get pods — 2/2 ready](./docs/aks-rollout-status.png)
+
+![Smoke check — readiness probe UP](./docs/aks-smoke-check-pass.png)
+
+![Terraform destroy — 7 resources removed](./docs/terraform-destroy-success.png)
+
 ## On the horizon
 
 Phase 7 (ACR + AKS Terraform, CD pipeline, end-to-end deploy) is complete. Remaining:

@@ -35,19 +35,19 @@ Status legend: ✅ captured · ⏳ planned, not yet captured
 | `docs/sonarqube-version-status.png` | ✅ (2026-06-30) | CLI: `curl http://localhost:9000/api/system/status` confirming version 26.6.0.123539. | CI/CD pipeline |
 | `docs/trivy-scan-clean.png` | ✅ (2026-06-30) | Jenkins console: Trivy Scan stage output, zero CRITICAL/HIGH findings after suppression. | CI/CD pipeline |
 
-## CD pipeline run (requires terraform apply — capture next session)
+## CD pipeline run
 
 | Filename | Status | Description | README section |
 |---|---|---|---|
 | `docs/jenkins-pipeline-cd-stages-green.png` | ✅ (2026-06-30) | Jenkins stage view: all 9 stages green including Push to ACR / Deploy to AKS / Smoke Check. | CI/CD pipeline |
-| `docs/acr-image-pushed.png` | ⏳ | CLI: `az acr repository show-tags --name acrnorthwindquotebba3df --repository northwind-quote` showing the build-numbered tag. | CI/CD pipeline |
-| `docs/aks-rollout-status.png` | ⏳ | CLI: `kubectl get pods -n default` showing 2/2 ready, 0 restarts. | CI/CD pipeline |
-| `docs/aks-smoke-check-pass.png` | ⏳ | Jenkins console: Smoke Check stage curl returning `{"status":"UP"}`. | CI/CD pipeline |
-| `docs/portal-aks-workloads.png` | ⏳ | Portal: AKS Workloads blade showing `northwind-quote` Deployment, 2/2 pods running. | CI/CD pipeline |
-| `docs/portal-acr-overview.png` | ⏳ | Portal: ACR overview blade — name, login server, SKU. | Infra |
-| `docs/portal-resource-group-overview.png` | ⏳ | Portal: `rg-northwind-quote-dev` resource group listing ACR, AKS cluster, VNet. | Infra |
-| `docs/terraform-apply-success.png` | ⏳ | CLI: `terraform apply` output — "Apply complete! 7 added, 0 changed, 0 destroyed." | Infra |
-| `docs/terraform-destroy-success.png` | ⏳ | CLI: `terraform destroy` output — "Destroy complete! 7 destroyed." | Cost-conscious design |
+| `docs/acr-image-pushed.png` | ✅ (2026-06-30) | CLI: `az acr repository show-tags` showing the build-numbered tag in the registry. | CI/CD pipeline |
+| `docs/aks-rollout-status.png` | ✅ (2026-06-30) | CLI: `kubectl get pods -n default` showing 2/2 ready, 0 restarts. | CI/CD pipeline |
+| `docs/aks-smoke-check-pass.png` | ✅ (2026-06-30) | Jenkins console: Smoke Check stage curl returning `{"status":"UP"}`. | CI/CD pipeline |
+| `docs/portal-aks-workloads.png` | ✅ (2026-06-30) | Portal: AKS Workloads blade showing `northwind-quote` Deployment, 2/2 pods running. | CI/CD pipeline |
+| `docs/portal-acr-overview.png` | ✅ (2026-06-30) | Portal: ACR overview blade — name, login server, SKU. | Infra |
+| `docs/portal-resource-group-overview.png` | ✅ (2026-06-30) | Portal: `rg-northwind-quote-dev` resource group listing ACR, AKS cluster, VNet. | Infra |
+| `docs/terraform-apply-success.png` | ✅ (2026-06-30) | CLI: `terraform apply` output — "Apply complete! 7 added, 0 changed, 0 destroyed." | Infra |
+| `docs/terraform-destroy-success.png` | ✅ (2026-06-30) | CLI: `terraform destroy` output — "Destroy complete! 7 destroyed." | Cost-conscious design |
 
 ## Problems found and fixed
 
@@ -68,7 +68,7 @@ Status legend: ✅ captured · ⏳ planned, not yet captured
 ## Notes
 
 - When a shot is captured, flip its status to ✅ and add the capture date.
-- CD pipeline + infra shots (acr-image-pushed, aks-*, portal-*, terraform-*) are captured
-  each time infra is provisioned and destroyed — next session after `terraform apply`.
+- CD pipeline + infra shots (acr-image-pushed, aks-*, portal-*, terraform-*) are recaptured
+  each time infra is reprovisioned — update the date stamp when refreshed.
 - Problems 1–6 are historical (bugs fixed before this session began); capture if you can
   reproduce, otherwise leave ⏳ — the written narrative stands on its own.
