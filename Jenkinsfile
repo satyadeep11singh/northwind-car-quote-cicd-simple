@@ -88,7 +88,14 @@ pipeline {
         stage('Docker Build') {
             steps {
                 // Builds the app image via the mounted host Docker socket (DooD).
-                sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest ."
+                // --platform linux/arm64 is required: the Jenkins host build agent is
+                // amd64, but every VM size this project uses (including the AKS node
+                // pool) is ARM64 (Standard_B2pls_v2). Without this flag, docker build
+                // produces an amd64 image that AKS schedules and then crash-loops with
+                // "exec format error" -- a real bug hit and fixed during this project.
+                // --load pulls the cross-built image back into the local Docker engine
+                // so the Trivy Scan and Push to ACR stages can find it by tag.
+                sh "docker buildx build --platform linux/arm64 --load -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest ."
             }
         }
 

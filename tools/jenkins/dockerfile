@@ -3,9 +3,11 @@
 # Custom Jenkins controller image for the Northwind Quote CI/CD project.
 #
 # Base: official Jenkins LTS on JDK 21 (current LTS line, 2026).
-# Adds: Docker CLI (for DooD image builds against the host engine via the
-#       mounted socket), Trivy (image vulnerability scanning), Azure CLI
-#       (ACR login, AKS credential fetch) and kubectl (AKS deploy).
+# Adds: Docker CLI + buildx plugin (for DooD image builds against the host
+#       engine via the mounted socket -- buildx is required to cross-build
+#       ARM64 images from this amd64 build agent, see the Docker Build stage),
+#       Trivy (image vulnerability scanning), Azure CLI (ACR login, AKS
+#       credential fetch) and kubectl (AKS deploy).
 # Bakes in the plugins the pipeline needs so there is zero manual plugin
 # installation after first boot.
 # ============================================================================
@@ -22,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
 https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
         > /etc/apt/sources.list.d/docker.list && \
-    apt-get update && apt-get install -y --no-install-recommends docker-ce-cli && \
+    apt-get update && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin && \
     rm -rf /var/lib/apt/lists/*
 
 # ---- Trivy (image scanner) ----
