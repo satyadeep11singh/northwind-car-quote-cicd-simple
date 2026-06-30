@@ -96,17 +96,22 @@ shared `ci` Docker network, with named volumes (`jenkins_home`, `sonarqube_data`
 /tools
   docker-compose.yml  # local CI stack: Jenkins + SonarQube
   /jenkins
-    dockerfile        # custom Jenkins controller image (Docker CLI, Trivy, az CLI, kubectl, plugins)
+    dockerfile        # custom Jenkins controller image (Docker CLI + buildx, Trivy, az CLI, kubectl, plugins)
 /k8s
   deployment.yaml     # AKS Deployment: 2 replicas, liveness/readiness probes, no imagePullSecrets
-  service.yaml        # ClusterIP Service (port-forward only — no public endpoint yet)
-dockerfile            # multi-stage app image (build → extract → runtime)
-Jenkinsfile            # CI/CD pipeline definition
+  service.yaml        # ClusterIP Service (port-forward only for this phase)
+/infra
+  /modules
+    /network          # reusable: subnet for AKS node pool
+    /registry         # reusable: Azure Container Registry (Basic SKU)
+    /aks              # reusable: AKS cluster (ARM64 node pool, SystemAssigned identity, kubelet identity output)
+  /environments
+    /dev              # composes the three modules; ACR+AKS+AcrPull role assignment
+dockerfile            # multi-stage app image (build → extract → runtime, ARM64 via --platform cross-build)
+Jenkinsfile            # CI/CD pipeline definition (9 stages, DEPLOY_ENABLED param gates CD half)
+.trivyignore          # CVE-2026-2100 (p11-kit) suppressed — see "Problems found and fixed" #9
 /docs                 # architecture diagrams, screenshot inventory
 ```
-
-No Terraform exists yet in this repo — infrastructure-as-code is introduced in
-[Phase 7](#on-the-horizon) when ACR and AKS are provisioned.
 
 ---
 
@@ -309,6 +314,57 @@ container's internal hostname/port on the shared `ci` network, not the host-mapp
 ![Quality gate resolving after webhook fix](./docs/problem-sonar-webhook-fixed.png)
 <!-- TODO: capture -->
 
+### 7. Azure CLI apt repo has no Debian Trixie release
+
+`jenkins/jenkins:lts-jdk21` runs Debian Trixie (the current testing branch). Microsoft's
+Azure CLI apt repository only publishes releases for named stable Debian codenames
+(bookworm, bullseye). The `$VERSION_CODENAME` shell expansion inside the Dockerfile
+resolved to `trixie`, which produced a 404 from Microsoft's package server and a build
+failure. The fix: pin the apt source line to `bookworm` explicitly rather than letting
+`$VERSION_CODENAME` resolve dynamically. This installs az CLI 2.87.0 cleanly from
+the bookworm release, which is ABI-compatible with Trixie.
+
+![Azure CLI Trixie build failure](./docs/problem-azcli-trixie-failure.png)
+<!-- TODO: capture -->
+
+![Azure CLI installed successfully after bookworm pin](./docs/problem-azcli-trixie-fixed.png)
+<!-- TODO: capture -->
+
+### 8. ARM64 image crash-loops with `exec format error`
+
+The AKS node pool uses `Standard_B2pls_v2` (ARM64/Ampere). The Jenkins build agent runs
+on `x86_64` Docker Desktop. A plain `docker build` produces an `amd64` image — which AKS
+successfully schedules (image pulled fine via the AcrPull managed identity) but
+immediately crash-loops every pod with `exec format error` when the kubelet tries to run
+the `java` binary for the wrong architecture.
+
+Fix: switch to `docker buildx build --platform linux/arm64 --load`, which cross-compiles
+the runtime stage for ARM64 using QEMU emulation via Docker Desktop's built-in binfmt
+support. This requires the `docker-buildx-plugin` package (not included in `docker-ce-cli`
+alone) — added to the Jenkins image.
+
+![ARM64 exec format error in AKS](./docs/problem-arm64-exec-format-error.png)
+<!-- TODO: capture -->
+
+### 9. QEMU can't execute Alpine binaries during ARM64 cross-build (`apk upgrade`, `adduser`)
+
+After switching to `--platform linux/arm64`, the Dockerfile's `RUN apk upgrade` and
+`RUN adduser` steps in the runtime stage failed with `exec format error` during the
+*build* — not at container start. Docker Desktop registers `linux/arm64` as a supported
+buildx platform, but the QEMU emulation it provides via DooD cannot actually execute
+Alpine/musl `sh` or `apk`. Glibc-based ARM64 images (Debian) hit the same failure.
+
+Fix: add `--platform=$BUILDPLATFORM` to the build and extract stages so they run natively
+on `amd64`, and eliminate all `RUN` steps from the runtime stage. Non-root is achieved
+with `USER 65532` (a numeric UID, no `adduser` needed). The `apk upgrade` that previously
+patched CVE-2026-2100 (`p11-kit`) cannot be run under QEMU, so it is suppressed in
+`.trivyignore` with a documented rationale — the fix exists in Alpine's package repos but
+isn't yet published in the base image, and patching it in-flight is blocked by the QEMU
+limitation.
+
+![QEMU Alpine build failure](./docs/problem-qemu-alpine-run-failure.png)
+<!-- TODO: capture -->
+
 ---
 
 ## Cost-conscious design
@@ -318,28 +374,23 @@ container's internal hostname/port on the shared `ci` network, not the host-mapp
   spend before any billable infrastructure is provisioned.
 - **Manual-first methodology** (see [above](#methodology-manual-first-then-automate))
   catches configuration mistakes before they become a paid pipeline run, not after.
-- When AKS/ACR are introduced in Phase 7, the plan is to **destroy infra between
-  sessions** against the persistent Terraform state backend, confirming the plan's
-  resource count before every apply and the empty resource group before ending a session
-  — the same discipline used in this portfolio's other projects.
+- **Infra is torn down between sessions** against the persistent Terraform state backend
+  (`rg-northwind-tfstate` / `stnorthwindtf676746`), confirming plan resource counts before
+  every apply and an empty resource group before ending each session — the same discipline
+  used across this portfolio.
 
 ## On the horizon
 
-Not yet built, in rough order:
+Phase 7 (ACR + AKS Terraform, CD pipeline, end-to-end deploy) is complete. Remaining:
 
-1. **Phase 7 — ACR + AKS Terraform module**, the first new billable infrastructure in
-   this project. The CD half of the Jenkinsfile (`k8s/deployment.yaml`,
-   `k8s/service.yaml`, the Push to ACR / Deploy to AKS / Smoke Check stages) is already
-   written and gated behind a `DEPLOY_ENABLED` parameter — this phase is what flips it
-   on. Decided ahead of provisioning: AKS pulls from ACR via its kubelet managed
-   identity (`az aks update --attach-acr`, AcrPull role), not `imagePullSecrets`; the app
-   is exposed via `ClusterIP` + port-forward only, no LoadBalancer/Ingress yet.
-2. **AKS hardening** — resource requests/limits (already set in `k8s/deployment.yaml`),
-   HPA, NetworkPolicy, Ingress + TLS, replacing the current port-forward-only exposure.
-3. **Key Vault** for the SonarQube token and any other secrets, with Jenkins granted a
+1. **AKS hardening** — HPA, NetworkPolicy, Ingress + TLS, replacing the current
+   ClusterIP + port-forward exposure. Node pool currently 1 node (`Standard_B2pls_v2`)
+   due to this subscription's 4-vCPU regional quota; a 2-node pool requires a quota
+   increase.
+2. **Key Vault** for the SonarQube token and any other secrets, with Jenkins granted a
    managed identity with least-privilege vault access — replacing the service-principal
-   credential the CD stages currently assume.
-4. **Monitoring/alerting** — Container Insights / Azure Monitor, with at least one real
+   credential (`azure-sp`) the CD stages currently use.
+3. **Monitoring/alerting** — Container Insights / Azure Monitor, with at least one real
    alert rule.
 
 **Deliberately deferred** (documented, not built): VNet peering between the CI and AKS

@@ -43,15 +43,19 @@ Status legend: ✅ captured · ⏳ planned, not yet captured
 | `docs/trivy-scan-clean.png` | ⏳ | CLI: Trivy scan output, zero CRITICAL/HIGH findings. | CI/CD pipeline |
 | `docs/docker-image-built.png` | ⏳ | CLI: `docker images` showing `northwind-quote:<build-number>` and `:latest` tags produced by the pipeline. | CI/CD pipeline |
 
-## CD pipeline run (requires Phase 7 — ACR + AKS — to exist; not yet captured)
+## CD pipeline run (Phase 7 complete — capture these now)
 
 | Filename | Status | Description | README section |
 |---|---|---|---|
 | `docs/jenkins-pipeline-cd-stages-green.png` | ⏳ | Portal: Jenkins stage view with `DEPLOY_ENABLED=true`, all 9 stages green including Push to ACR / Deploy to AKS / Smoke Check. | CI/CD pipeline |
-| `docs/acr-image-pushed.png` | ⏳ | CLI (`az acr repository show-tags`) + Portal (ACR Repositories blade): the build-numbered image tag present in the registry. | CI/CD pipeline |
-| `docs/aks-rollout-status.png` | ⏳ | CLI: `kubectl rollout status deployment/northwind-quote` succeeding, plus `kubectl get pods` showing 2/2 ready. | CI/CD pipeline |
-| `docs/aks-smoke-check-pass.png` | ⏳ | CLI: the Smoke Check stage's `curl` against `/actuator/health/readiness` through the port-forward, returning UP. | CI/CD pipeline |
-| `docs/portal-aks-workloads.png` | ⏳ | Portal: AKS Workloads blade showing the `northwind-quote` Deployment, 2/2 pods running. | CI/CD pipeline |
+| `docs/acr-image-pushed.png` | ⏳ | CLI (`az acr repository show-tags --name acrnorthwindquotebba3df --repository northwind-quote`) + Portal (ACR Repositories blade): build-numbered tag present. | CI/CD pipeline |
+| `docs/aks-rollout-status.png` | ⏳ | CLI: `kubectl get pods -n default` showing 2/2 ready, 0 restarts. | CI/CD pipeline |
+| `docs/aks-smoke-check-pass.png` | ⏳ | Jenkins console: Smoke Check stage curl returning `{"status":"UP"}`. | CI/CD pipeline |
+| `docs/portal-aks-workloads.png` | ⏳ | Portal: AKS Workloads blade showing `northwind-quote` Deployment, 2/2 pods running. | CI/CD pipeline |
+| `docs/portal-acr-overview.png` | ⏳ | Portal: ACR overview blade — name, login server, SKU. | CI/CD pipeline |
+| `docs/portal-resource-group-overview.png` | ⏳ | Portal: `rg-northwind-quote-dev` resource group listing ACR, AKS cluster, VNet. | Infra |
+| `docs/terraform-apply-success.png` | ⏳ | CLI: `terraform apply` output — "Apply complete! 7 added, 0 changed, 0 destroyed." | Infra |
+| `docs/terraform-destroy-success.png` | ⏳ | CLI: `terraform destroy` output — all dev resources removed. | Cost-conscious design |
 
 ## Problems found and fixed
 
@@ -61,21 +65,24 @@ Status legend: ✅ captured · ⏳ planned, not yet captured
 | `docs/problem-i18n-fallback-after.png` | ⏳ | Same screen after adding `messages_en.properties` + explicit basename — correct text rendering. | 1 |
 | `docs/problem-driver-id-null-error.png` | ⏳ | The `NULL not allowed for DRIVER_ID` error before the bidirectional `@ManyToOne` fix. | 2 |
 | `docs/problem-driver-id-null-fixed.png` | ⏳ | A vehicle successfully saved against a driver after the fix. | 2 |
-| `docs/problem-trivy-cve-before.png` | ⏳ | Trivy scan showing the `p11-kit` CVE-2026-2100 HIGH finding before the fix. | 3 |
-| `docs/problem-trivy-cve-after.png` | ⏳ | Clean Trivy scan after adding `apk upgrade --no-cache` to the runtime stage. | 3 |
+| `docs/problem-trivy-cve-before.png` | ⏳ | Trivy scan showing the `p11-kit` CVE-2026-2100 HIGH finding (suppressed via `.trivyignore` — see problem #9 for why `apk upgrade` can't be used). | 3 |
+| `docs/problem-trivy-cve-after.png` | ⏳ | Trivy scan passing with the CVE suppressed in `.trivyignore`. | 3 |
 | `docs/problem-jarlauncher-failure.png` | ⏳ | The container failing to start with a plain `java -jar app.jar` entrypoint against a layered-extracted image. | 4 |
 | `docs/problem-jarlauncher-fixed.png` | ⏳ | The container starting cleanly with the `JarLauncher` entrypoint. | 4 |
 | `docs/problem-docker-socket-perms.png` | ⏳ | The Docker-socket permission error inside the Jenkins container before `group_add: ["0"]`. | 5 |
 | `docs/problem-sonar-webhook-pending.png` | ⏳ | The Quality Gate stage hung at `PENDING` before the Jenkins webhook was configured in SonarQube. | 6 |
 | `docs/problem-sonar-webhook-fixed.png` | ⏳ | The Quality Gate resolving immediately after the webhook fix, Portal view of the webhook config. | 6 |
+| `docs/problem-azcli-trixie-failure.png` | ⏳ | Jenkins image build failing: "The repository 'https://packages.microsoft.com/repos/azure-cli trixie Release' does not have a Release file." | 7 |
+| `docs/problem-azcli-trixie-fixed.png` | ⏳ | Jenkins image building cleanly after pinning the Azure CLI apt source to `bookworm`. | 7 |
+| `docs/problem-arm64-exec-format-error.png` | ⏳ | AKS pod in CrashLoopBackOff; `kubectl logs` showing `exec format error` — amd64 image on ARM64 node. | 8 |
+| `docs/problem-qemu-alpine-run-failure.png` | ⏳ | `docker buildx build --platform linux/arm64` failing at `RUN apk upgrade` with `exec format error` under QEMU DooD. | 9 |
 
 ## Notes
 
 - Every pairing above should be **CLI + Portal/UI** where both exist, per the project's
   standing screenshot-pairing discipline — a CLI screenshot proves the underlying state,
   a Portal/UI screenshot proves it's visible the way a human operator would see it.
-- AKS/ACR-stage screenshots are listed under "CD pipeline run" above but can't be
-  captured until Phase 7 (ACR + AKS Terraform module) is actually provisioned — the
-  manifests and Jenkinsfile stages exist now, the infrastructure does not yet.
+- Phase 7 (ACR + AKS) is now provisioned — the CD pipeline screenshot entries above are
+  ready to capture before running `terraform destroy`.
 - When a shot is captured, flip its status to ✅ and add the capture date as a trailing
-  note, e.g. `✅ (2026-07-02)`.
+  note, e.g. `✅ (2026-06-30)`.
