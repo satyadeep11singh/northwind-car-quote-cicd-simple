@@ -25,6 +25,9 @@ spec:
       labels:
         app: northwind-quote
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
       containers:
         - name: northwind-quote
           # Jenkins replaces this at deploy time with the ACR-qualified,

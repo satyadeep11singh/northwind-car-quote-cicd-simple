@@ -1,0 +1,10 @@
+# CVE-2026-2100: p11-kit NULL dereference (HIGH, fixed in 0.26.2-r0)
+#
+# Suppressed because: the fix exists in Alpine's package repos but is not
+# yet published in the eclipse-temurin:21-jre-alpine base image. Patching
+# it via `apk upgrade` in the Dockerfile requires executing Alpine's sh
+# inside an ARM64 container during cross-compilation, which fails under
+# Docker Desktop's DooD QEMU emulation on this amd64 build host. The
+# suppression will be removed once the base image is updated to include the
+# fix (i.e. when `apk info p11-kit` inside the image returns >= 0.26.2-r0).
+CVE-2026-2100

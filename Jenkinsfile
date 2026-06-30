@@ -108,6 +108,7 @@ pipeline {
                       --severity CRITICAL,HIGH \
                       --exit-code 1 \
                       --no-progress \
+                      --ignorefile .trivyignore \
                       ${IMAGE_NAME}:${IMAGE_TAG}
                 """
             }
