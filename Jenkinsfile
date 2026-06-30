@@ -32,7 +32,7 @@ pipeline {
     environment {
         IMAGE_NAME          = 'northwind-quote'
         IMAGE_TAG           = "${env.BUILD_NUMBER}"
-        ACR_NAME            = 'acrnorthwindquotebba3df'
+        ACR_NAME            = 'acrnorthwindquote1e24cb'
         AKS_CLUSTER_NAME    = 'aks-northwind-quote-dev'
         AKS_RESOURCE_GROUP  = 'rg-northwind-quote-dev'
         K8S_NAMESPACE       = 'default'
