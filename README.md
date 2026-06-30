@@ -2,8 +2,8 @@
 
 A Java Spring Boot car-insurance quote application, built and quality-gated by a
 **self-hosted Jenkins pipeline**: Checkout → Maven build/test → SonarQube analysis +
-quality gate → Docker build → Trivy vulnerability scan. Deploying that scanned image to
-AKS is the next phase of this project — see [On the horizon](#on-the-horizon).
+quality gate → Docker cross-build (ARM64) → Trivy vulnerability scan → push to ACR →
+deploy to AKS → smoke check.
 
 > **Disclaimer:** "Northwind Mutual" is a fictional company. All code, infrastructure,
 > and data in this project are for personal learning purposes only and do not represent
@@ -23,8 +23,7 @@ access, its credentials, and its integration with a second self-hosted tool (Son
 The app itself is a small, honest insurance-domain exercise: driver → vehicle → coverage
 choice → calculated premium, with every rating factor visible on the result page rather
 than a single opaque number. The interesting engineering is in the pipeline around it —
-proving a real build-test-scan loop works **before** any of it touches billable Azure
-infrastructure.
+proving a real build-test-scan-deploy loop works end to end.
 
 ### Methodology: manual first, then automate
 
@@ -33,13 +32,6 @@ terminal, a manual `docker build`, a manual `trivy image` scan — before it was
 Jenkins. That order matters: when a pipeline stage fails, you want to already know what
 success looks like from having done it manually, so you can tell a real bug from a CI
 environment problem in seconds instead of guessing.
-
-### Project status
-
-The full CI/CD pipeline is complete and verified end-to-end: app build → test → Sonar
-quality gate → Docker cross-build (ARM64) → Trivy scan → push to ACR → deploy to AKS →
-smoke check. Infra (ACR + AKS) is torn down between sessions and reprovisioned via
-Terraform when needed.
 
 ---
 
@@ -51,7 +43,7 @@ Three containers on one Docker network: the app itself, the Jenkins controller, 
 SonarQube. Jenkins builds Docker images via **Docker-outside-of-Docker (DooD)** — it
 doesn't run its own Docker daemon, it talks to the host's Docker Desktop engine through a
 mounted socket. This keeps the whole stack runnable on a laptop with no cloud dependency
-during development.
+until the CD stage.
 
 ![Structural diagram](./docs/architecture-structural.png)
 <!-- TODO: draw.io export — app/Jenkins/SonarQube containers, ci network, host port mappings 8080/8081/9000, DooD socket mount -->
@@ -63,30 +55,13 @@ Checkout → Build & Test → SonarQube Analysis → Quality Gate → Docker Bui
          → Push to ACR → Deploy to AKS → Smoke Check
 ```
 
-Each stage gates the next: tests must pass before Sonar analysis runs, the quality gate
-must pass before an image is built, and the image must scan clean before it's pushed.
-The three CD stages (Push to ACR, Deploy to AKS, Smoke Check) are gated behind a
-`DEPLOY_ENABLED` pipeline parameter so the CI half can run standalone against the free
-local stack, and the full 9-stage run fires only when infra is provisioned.
+Each stage gates the next. The three CD stages (Push to ACR, Deploy to AKS, Smoke Check)
+are gated behind a `DEPLOY_ENABLED` pipeline parameter so the CI half runs standalone
+against the free local stack, and the full 9-stage run fires only when infra is
+provisioned.
 
 ![Pipeline flow diagram](./docs/architecture-pipeline.png)
-<!-- TODO: draw.io export — six pipeline stages, what each produces/consumes, gate points -->
-
----
-
-## Resource list
-
-Everything in this phase runs locally — there is no billable Azure infrastructure yet.
-
-| Component | Image / Tool | Host port | Notes |
-|---|---|---|---|
-| App | `northwind-quote:local` (this repo's `dockerfile`) | `8080` | Spring Boot, H2 in-memory DB, Actuator health/info/prometheus exposed |
-| Jenkins | `northwind-jenkins:local` (`tools/jenkins/dockerfile`, based on `jenkins/jenkins:lts-jdk21`) | `8081` (UI), `50000` (agent, unused) | Docker CLI + Trivy baked in; plugins pre-installed via `jenkins-plugin-cli` |
-| SonarQube | `sonarqube:community` | `9000` | Code quality analysis + quality gate, webhooks back to Jenkins |
-
-All three are defined in [`tools/docker-compose.yml`](./tools/docker-compose.yml) on a
-shared `ci` Docker network, with named volumes (`jenkins_home`, `sonarqube_data`,
-`sonarqube_extensions`, `sonarqube_logs`) persisting state across container restarts.
+<!-- TODO: draw.io export — nine pipeline stages, quality gates, what each produces/consumes -->
 
 ---
 
@@ -109,98 +84,175 @@ shared `ci` Docker network, with named volumes (`jenkins_home`, `sonarqube_data`
   /environments
     /dev              # composes the three modules; ACR+AKS+AcrPull role assignment
 dockerfile            # multi-stage app image (build → extract → runtime, ARM64 via --platform cross-build)
-Jenkinsfile            # CI/CD pipeline definition (9 stages, DEPLOY_ENABLED param gates CD half)
+Jenkinsfile           # CI/CD pipeline definition (9 stages, DEPLOY_ENABLED param gates CD half)
 .trivyignore          # CVE-2026-2100 (p11-kit) suppressed — see "Problems found and fixed" #9
 /docs                 # architecture diagrams, screenshot inventory
 ```
 
 ---
 
-## The app
+## The build, from first line of code to running pod
 
-Built on a **PetClinic structural skeleton** (Spring Boot + Thymeleaf + Spring Data JPA),
-with the entire domain swapped from pets/owners to car insurance: `Driver`, `Vehicle`,
-`Quote`, with a transparent `QuoteCalculationService` that multiplies five independent
-rating factors (driver age/experience, vehicle age, usage type, liability limit,
-deductible) against an $800 base rate. The calculation is intentionally illustrative
-rather than actuarially accurate — the goal is a formula a reader can follow end-to-end,
-with every intermediate factor stored on the resulting `Quote` so the UI can show a full
-breakdown instead of a single number.
+### Step 1 — The app
 
-UI is real **Bootstrap 5 + Bootstrap Icons** (via WebJars), navy Northwind theme. 10 unit
-tests cover the rating logic; `./mvnw test` passes 10/10. Actuator exposes
-`health`/`info`/`prometheus`, with `/livez` and `/readyz` probe groups already enabled
-(`management.endpoint.health.probes.add-additional-paths=true`) — wired in ahead of time
-for the AKS liveness/readiness probes planned in Phase 8.
+The application is built on a **PetClinic structural skeleton** (Spring Boot + Thymeleaf +
+Spring Data JPA), with the domain fully replaced: `Driver`, `Vehicle`, `Quote`. A
+transparent `QuoteCalculationService` multiplies five independent rating factors (driver
+age and experience, vehicle age, usage type, liability limit, deductible) against an $800
+base rate. Every intermediate factor is stored on the `Quote` so the result page shows a
+full breakdown — not a single opaque number.
 
-![Quote request form](./docs/app-ui-quote-form.png)
+The UI uses **Bootstrap 5 + Bootstrap Icons** (via WebJars) with a navy Northwind theme.
+The form below takes driver and vehicle details, then calculates and displays the quote
+with the complete rating-factor breakdown on the next screen.
 
-![Quote result with rating breakdown](./docs/app-ui-quote-result.png)
+![Quote request form — driver and vehicle details entered before calculating a premium](./docs/app-ui-quote-form.png)
 
-![Unit tests passing](./docs/app-tests-passing.png)
+![Quote result — the annual premium with each rating factor broken down line by line](./docs/app-ui-quote-result.png)
 
----
+### Step 2 — Unit tests
 
-## Dockerfile
+Before any pipeline was wired up, the rating logic was covered by 10 unit tests targeting
+`QuoteCalculationService` directly — one test per factor combination edge case. All 10
+pass cleanly with `./mvnw test`, giving the pipeline a reliable gate to enforce from the
+first run.
 
-Three-stage build (`./dockerfile`):
+![./mvnw test output — Tests run: 10, Failures: 0, Errors: 0, Skipped: 0](./docs/app-tests-passing.png)
 
-1. **Build** — `maven:3.9-eclipse-temurin-21`, runs the Maven wrapper to produce the fat
-   JAR. The `.mvn`/`mvnw`/`pom.xml` layer is copied and `dependency:go-offline` run before
-   source is copied, so dependency resolution is cached separately from application code.
-2. **Extract** — `eclipse-temurin:21-jre`, unpacks the fat JAR into Spring Boot's
-   **layered** format (`-Djarmode=tools ... extract --layers --launcher`), so Docker can
-   cache rarely-changing dependency layers separately from frequently-changing application
-   classes.
-3. **Runtime** — `eclipse-temurin:21-jre-alpine`, JRE-only (no compiler, smaller attack
-   surface), runs as a non-root user `northwind`, container-aware heap sizing via
-   `-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0`, and a `HEALTHCHECK` against
-   `/actuator/health`.
+### Step 3 — Actuator health endpoints
 
-Tests are deliberately **not** re-run inside the image build (`-DskipTests`) — they run
-once, as a dedicated Jenkins stage where results are reported and the Sonar quality gate
-is evaluated against them. Re-running them inside the image build would duplicate work
-without adding signal.
+Actuator was configured to expose `/health`, `/info`, and `/prometheus`, with the
+dedicated Kubernetes probe paths `/livez` and `/readyz` enabled ahead of the AKS phase.
+This meant the liveness and readiness probes in `k8s/deployment.yaml` were wired to
+endpoints that were already proven to work locally — not added as an afterthought once
+the cluster existed.
 
----
+![/actuator/health returning UP with liveness and readiness groups both shown](./docs/app-actuator-health.png)
 
-## CI/CD pipeline
+### Step 4 — Local CI stack: Jenkins and SonarQube
 
-### Stages
+Jenkins and SonarQube run as containers on the laptop via `tools/docker-compose.yml`, on
+a shared `ci` Docker network. Jenkins uses a custom image (`tools/jenkins/dockerfile`)
+that bakes in Docker CLI, the buildx plugin, Trivy, Azure CLI, kubectl, and all required
+plugins — so there is no manual plugin installation after first boot.
 
-| Stage | What it does |
-|---|---|
-| **Checkout** | `checkout scm` — explicit in logs even though Jenkins auto-checks-out for "Pipeline script from SCM" jobs |
-| **Build & Test** | `./mvnw -B clean verify` — compiles, runs all 10 unit tests, packages the JAR; JUnit results published to Jenkins regardless of outcome |
-| **SonarQube Analysis** | `./mvnw -B sonar:sonar` inside `withSonarQubeEnv('SonarQube')`, reusing the already-compiled classes from the previous stage |
-| **Quality Gate** | `waitForQualityGate abortPipeline: true` — blocks on SonarQube's webhook callback (5-minute timeout), fails the build if the gate isn't green |
-| **Docker Build** | `docker build` against the host engine via the mounted socket (DooD), tags `<build-number>` and `latest` |
-| **Trivy Scan** | `trivy image --severity CRITICAL,HIGH --exit-code 1` — fails the build on any CRITICAL/HIGH finding |
-| **Push to ACR** *(gated)* | `az acr login` + `docker push`, tags `<acr>.azurecr.io/northwind-quote:<build-number>` |
-| **Deploy to AKS** *(gated)* | `az aks get-credentials` then `kubectl apply` of `k8s/service.yaml` and `k8s/deployment.yaml` (image tag substituted in), waits on `kubectl rollout status` |
-| **Smoke Check** *(gated)* | Port-forwards the new Service and curls `/actuator/health/readiness`, confirming the rollout actually answers traffic, not just that Kubernetes reports it healthy |
+The Jenkins dashboard below shows both pipeline jobs: `northwind-quote-ci` (the CI-only
+run used during development) and `northwind-quote` (the full 9-stage CI/CD run with
+`DEPLOY_ENABLED`).
 
-Pipeline options: `timestamps()`, a 30-minute overall timeout, and
-`disableConcurrentBuilds()` so overlapping runs can't race each other.
+![Jenkins dashboard showing both pipeline jobs after the first successful runs](./docs/jenkins-dashboard.png)
 
-![Jenkins CD pipeline, all 9 stages green](./docs/jenkins-pipeline-cd-stages-green.png)
+SonarQube stores project analysis history, quality gate results, and code metrics across
+runs. The project was configured with the default quality gate (no new bugs, no new
+vulnerabilities, coverage threshold) and a webhook back to Jenkins so the Quality Gate
+stage could block on the result in real time.
 
-![SonarQube quality gate passed](./docs/sonarqube-quality-gate-passed.png)
+![SonarQube project dashboard showing quality metrics and gate status after analysis](./docs/sonarqube-dashboard.png)
 
-![Trivy scan, zero findings](./docs/trivy-scan-clean.png)
+### Step 5 — SonarQube analysis and quality gate
 
-### Local CI stack
+The SonarQube Analysis stage runs `./mvnw sonar:sonar` inside `withSonarQubeEnv`, reusing
+the classes already compiled in the Build & Test stage. The Quality Gate stage then blocks
+on SonarQube's webhook callback — if the gate isn't green, the build aborts before a
+Docker image is ever built. The gate passed on the first clean run.
 
-Jenkins and SonarQube run as containers on this laptop (`tools/docker-compose.yml`), not
-on Azure infrastructure — see [Cost-conscious design](#cost-conscious-design). Start with:
+![SonarQube quality gate showing Passed in green](./docs/sonarqube-quality-gate-passed.png)
 
-```bash
-docker compose -f tools/docker-compose.yml up -d --build
-```
+The exact SonarQube version running in this stack was confirmed via the API rather than
+assumed — a habit carried from the handoff document's explicit "no guessing on tool
+versions" rule.
 
-![Jenkins dashboard](./docs/jenkins-dashboard.png)
+![curl http://localhost:9000/api/system/status confirming version 26.6.0.123539](./docs/sonarqube-version-status.png)
 
-![SonarQube dashboard](./docs/sonarqube-dashboard.png)
+### Step 6 — Docker build and Trivy scan
+
+After the quality gate passes, the Docker Build stage cross-compiles the image for
+`linux/arm64` using `docker buildx build --platform linux/arm64 --load`. This is required
+because the Jenkins agent runs on an `x86_64` host but the AKS node pool uses
+`Standard_B2pls_v2` (ARM64/Ampere) — the only 2-vCPU VM family available without
+restrictions on this subscription. The Trivy Scan stage then runs
+`trivy image --severity CRITICAL,HIGH --exit-code 1` against the built image, failing the
+build on any unaddressed finding.
+
+The scan below shows zero CRITICAL or HIGH findings — the one known finding
+(`p11-kit` CVE-2026-2100) is suppressed in `.trivyignore` with a documented rationale
+(see problem #9).
+
+![Trivy scan output — zero CRITICAL/HIGH findings, all JAR dependencies clean](./docs/trivy-scan-clean.png)
+
+### Step 7 — Infrastructure provisioned with Terraform
+
+With CI proven and stable, the Azure infrastructure was provisioned using modular
+Terraform: three reusable modules (`network`, `registry`, `aks`) composed by
+`infra/environments/dev`. The AKS cluster's kubelet identity is granted `AcrPull` on the
+registry via an explicit `azurerm_role_assignment` — the Terraform-native equivalent of
+`az aks update --attach-acr` — so no `imagePullSecrets` are needed in the manifests.
+
+`terraform apply` created 7 resources in a single run: resource group, VNet, AKS subnet,
+ACR (Basic SKU), AKS cluster (1 node, `Standard_B2pls_v2`, Free tier), the AcrPull role
+assignment, and a random suffix for the globally-unique ACR name.
+
+![terraform apply output — Apply complete! Resources: 7 added, 0 changed, 0 destroyed](./docs/terraform-apply-success.png)
+
+The Portal view below confirms all seven resources provisioned inside `rg-northwind-quote-dev`,
+exactly matching the Terraform plan.
+
+![Azure Portal — rg-northwind-quote-dev resource group listing the VNet, ACR, and AKS cluster](./docs/portal-resource-group-overview.png)
+
+The ACR overview shows the registry name, login server URL, and Basic SKU — admin access
+is disabled; the AKS kubelet identity pulls images via the role assignment instead.
+
+![Azure Portal — ACR overview showing login server and Basic SKU, admin access disabled](./docs/portal-acr-overview.png)
+
+### Step 8 — Full CI/CD pipeline run end to end
+
+With infra up, the `northwind-quote` pipeline was triggered with `DEPLOY_ENABLED=true`.
+All 9 stages ran in sequence: the CI half (Checkout → Build & Test → SonarQube Analysis →
+Quality Gate → Docker Build → Trivy Scan) completed cleanly, then the CD half pushed the
+ARM64 image to ACR, applied the Kubernetes manifests to AKS, waited for the rollout to
+complete, and confirmed the app was answering traffic via a port-forward smoke check.
+
+![Jenkins stage view — all 9 stages green, from Checkout through Smoke Check](./docs/jenkins-pipeline-cd-stages-green.png)
+
+The JUnit results from the Build & Test stage are published to Jenkins after every run,
+regardless of outcome, so test trends are visible over time. All 10 tests passed.
+
+![Jenkins JUnit report — 10 tests passed, 0 failures, 0 errors](./docs/jenkins-build-test-junit.png)
+
+### Step 9 — Image in ACR, pods running on AKS
+
+After the Push to ACR stage completed, the build-numbered image tag was confirmed in the
+registry. The Deploy to AKS stage then applied `k8s/service.yaml` and
+`k8s/deployment.yaml` (with the image tag substituted in at deploy time), and waited on
+`kubectl rollout status` to confirm both replicas were up before proceeding.
+
+![az acr repository show-tags output — build-numbered tag present in the registry](./docs/acr-image-pushed.png)
+
+`kubectl get pods` confirms both pods reached `Running` status with zero restarts — the
+ARM64 image executed correctly on the ARM64 node, with the `HEALTHCHECK` passing and the
+readiness probe confirming the app was accepting traffic.
+
+![kubectl get pods -n default — 2/2 pods Running, 0 restarts](./docs/aks-rollout-status.png)
+
+The Smoke Check stage port-forwarded the ClusterIP service and curled
+`/actuator/health/readiness` directly, confirming the newly-deployed pods were answering
+real HTTP traffic — not just that Kubernetes considered them healthy.
+
+![Jenkins console — Smoke Check stage curl returning {"status":"UP"}](./docs/aks-smoke-check-pass.png)
+
+The Portal view below shows the Deployment from AKS's own perspective — 2/2 replicas
+available, matching what `kubectl` reported.
+
+![Azure Portal — AKS Workloads blade showing northwind-quote Deployment, 2/2 pods](./docs/portal-aks-workloads.png)
+
+### Step 10 — Infra torn down
+
+Per the project's cost discipline, the dev infrastructure is destroyed at the end of
+every session. `terraform destroy` removed all 7 resources cleanly, and `az group list`
+confirmed `rg-northwind-quote-dev` was gone — only the persistent state backend
+(`rg-northwind-tfstate`) remained.
+
+![terraform destroy output — Destroy complete! Resources: 7 destroyed](./docs/terraform-destroy-success.png)
 
 ---
 
@@ -279,12 +331,9 @@ The AKS node pool uses `Standard_B2pls_v2` (ARM64/Ampere). The Jenkins build age
 on `x86_64` Docker Desktop. A plain `docker build` produces an `amd64` image — which AKS
 successfully schedules (image pulled fine via the AcrPull managed identity) but
 immediately crash-loops every pod with `exec format error` when the kubelet tries to run
-the `java` binary for the wrong architecture.
-
-Fix: switch to `docker buildx build --platform linux/arm64 --load`, which cross-compiles
-the runtime stage for ARM64 using QEMU emulation via Docker Desktop's built-in binfmt
-support. This requires the `docker-buildx-plugin` package (not included in `docker-ce-cli`
-alone) — added to the Jenkins image.
+the `java` binary for the wrong architecture. Fix: switch to
+`docker buildx build --platform linux/arm64 --load`, and add `docker-buildx-plugin` to
+the Jenkins image (not included in `docker-ce-cli` alone).
 
 ### 9. QEMU can't execute Alpine binaries during ARM64 cross-build (`apk upgrade`, `adduser`)
 
@@ -292,45 +341,30 @@ After switching to `--platform linux/arm64`, the Dockerfile's `RUN apk upgrade` 
 `RUN adduser` steps in the runtime stage failed with `exec format error` during the
 *build* — not at container start. Docker Desktop registers `linux/arm64` as a supported
 buildx platform, but the QEMU emulation it provides via DooD cannot actually execute
-Alpine/musl `sh` or `apk`. Glibc-based ARM64 images (Debian) hit the same failure.
-
-Fix: add `--platform=$BUILDPLATFORM` to the build and extract stages so they run natively
-on `amd64`, and eliminate all `RUN` steps from the runtime stage. Non-root is achieved
-with `USER 65532` (a numeric UID, no `adduser` needed). The `apk upgrade` that previously
-patched CVE-2026-2100 (`p11-kit`) cannot be run under QEMU, so it is suppressed in
-`.trivyignore` with a documented rationale — the fix exists in Alpine's package repos but
-isn't yet published in the base image, and patching it in-flight is blocked by the QEMU
-limitation.
+Alpine/musl `sh` or `apk`. Fix: add `--platform=$BUILDPLATFORM` to the build and extract
+stages so they run natively on `amd64`, and eliminate all `RUN` steps from the runtime
+stage. Non-root is achieved with `USER 65532` (a numeric UID, no `adduser` needed).
 
 ---
 
 ## Cost-conscious design
 
-- **Everything in this phase runs locally.** Jenkins and SonarQube are Docker containers
-  on a laptop, not Azure VMs — the entire build-test-scan loop is proven at zero Azure
-  spend before any billable infrastructure is provisioned.
-- **Manual-first methodology** (see [above](#methodology-manual-first-then-automate))
-  catches configuration mistakes before they become a paid pipeline run, not after.
-- **Infra is torn down between sessions** against the persistent Terraform state backend
-  (`rg-northwind-tfstate` / `stnorthwindtf676746`), confirming plan resource counts before
-  every apply and an empty resource group before ending each session — the same discipline
-  used across this portfolio.
+- **Zero Azure spend until the CD phase.** The entire CI loop — build, test, Sonar,
+  Docker build, Trivy scan — runs on free local Docker containers. No Azure resources
+  were provisioned until every stage was proven locally first.
+- **Infra is torn down between sessions.** `terraform destroy` removes all 7 dev
+  resources at the end of every session; the next session starts with `terraform apply`
+  from the persistent state backend (`rg-northwind-tfstate`). `az group list` is run
+  before ending a session to confirm nothing was left running.
+- **Cost-aware sizing.** AKS uses the Free tier SKU and a single `Standard_B2pls_v2`
+  node (2 vCPUs, ARM64) — the smallest confirmed-available size on this subscription in
+  `canadacentral`. The x86 burstable family is blocked on this subscription; ARM64 is
+  the only available option at this size, which also drove the cross-compilation work in
+  problems 8 and 9.
+- **No redundant state backend.** The Terraform state backend (`rg-northwind-tfstate`) is
+  shared across portfolio projects rather than creating a new storage account per project.
 
-![Terraform apply — 7 resources created](./docs/terraform-apply-success.png)
-
-![Portal resource group — ACR, AKS, VNet](./docs/portal-resource-group-overview.png)
-
-![Portal ACR overview](./docs/portal-acr-overview.png)
-
-![AKS workloads — 2/2 pods running](./docs/portal-aks-workloads.png)
-
-![ACR image tag pushed by pipeline](./docs/acr-image-pushed.png)
-
-![kubectl get pods — 2/2 ready](./docs/aks-rollout-status.png)
-
-![Smoke check — readiness probe UP](./docs/aks-smoke-check-pass.png)
-
-![Terraform destroy — 7 resources removed](./docs/terraform-destroy-success.png)
+---
 
 ## On the horizon
 
