@@ -32,10 +32,9 @@ pipeline {
     environment {
         IMAGE_NAME          = 'northwind-quote'
         IMAGE_TAG           = "${env.BUILD_NUMBER}"
-        // Populated once Phase 7 (ACR + AKS Terraform module) is provisioned.
-        ACR_NAME            = ''
-        AKS_CLUSTER_NAME    = ''
-        AKS_RESOURCE_GROUP  = ''
+        ACR_NAME            = 'acrnorthwindquotebba3df'
+        AKS_CLUSTER_NAME    = 'aks-northwind-quote-dev'
+        AKS_RESOURCE_GROUP  = 'rg-northwind-quote-dev'
         K8S_NAMESPACE       = 'default'
         AZURE_TENANT_ID     = '892a000d-d8af-4fd6-9936-7b358542b184'
     }
