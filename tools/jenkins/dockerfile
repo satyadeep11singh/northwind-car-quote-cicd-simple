@@ -30,11 +30,15 @@ RUN curl -fsSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib
         | sh -s -- -b /usr/local/bin
 
 # ---- Azure CLI (ACR login, AKS credential fetch for the CD stages) ----
+# Microsoft's apt repo only publishes releases for named stable Debian codenames
+# (bookworm, bullseye). The Jenkins LTS base image is currently Trixie (Debian
+# testing), which has no Microsoft repo entry -- so we pin to "bookworm"
+# explicitly rather than letting $VERSION_CODENAME resolve to an unsupported name.
 RUN install -m 0755 -d /etc/apt/keyrings && \
     curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg && \
     chmod a+r /etc/apt/keyrings/microsoft.gpg && \
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] \
-https://packages.microsoft.com/repos/azure-cli/ $(. /etc/os-release && echo "$VERSION_CODENAME") main" \
+https://packages.microsoft.com/repos/azure-cli/ bookworm main" \
         > /etc/apt/sources.list.d/azure-cli.list && \
     apt-get update && apt-get install -y --no-install-recommends azure-cli && \
     rm -rf /var/lib/apt/lists/*
