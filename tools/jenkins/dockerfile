@@ -4,7 +4,8 @@
 #
 # Base: official Jenkins LTS on JDK 21 (current LTS line, 2026).
 # Adds: Docker CLI (for DooD image builds against the host engine via the
-#       mounted socket) and Trivy (image vulnerability scanning).
+#       mounted socket), Trivy (image vulnerability scanning), Azure CLI
+#       (ACR login, AKS credential fetch) and kubectl (AKS deploy).
 # Bakes in the plugins the pipeline needs so there is zero manual plugin
 # installation after first boot.
 # ============================================================================
@@ -27,6 +28,21 @@ https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_C
 # ---- Trivy (image scanner) ----
 RUN curl -fsSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
         | sh -s -- -b /usr/local/bin
+
+# ---- Azure CLI (ACR login, AKS credential fetch for the CD stages) ----
+RUN install -m 0755 -d /etc/apt/keyrings && \
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/keyrings/microsoft.gpg && \
+    chmod a+r /etc/apt/keyrings/microsoft.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/microsoft.gpg] \
+https://packages.microsoft.com/repos/azure-cli/ $(. /etc/os-release && echo "$VERSION_CODENAME") main" \
+        > /etc/apt/sources.list.d/azure-cli.list && \
+    apt-get update && apt-get install -y --no-install-recommends azure-cli && \
+    rm -rf /var/lib/apt/lists/*
+
+# ---- kubectl (AKS deploy + rollout status + smoke check) ----
+RUN curl -fsSL -o /usr/local/bin/kubectl \
+        "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/$(dpkg --print-architecture)/kubectl" && \
+    chmod +x /usr/local/bin/kubectl
 
 USER jenkins
 

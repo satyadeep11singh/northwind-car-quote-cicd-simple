@@ -96,9 +96,12 @@ shared `ci` Docker network, with named volumes (`jenkins_home`, `sonarqube_data`
 /tools
   docker-compose.yml  # local CI stack: Jenkins + SonarQube
   /jenkins
-    dockerfile        # custom Jenkins controller image (Docker CLI + Trivy + plugins)
+    dockerfile        # custom Jenkins controller image (Docker CLI, Trivy, az CLI, kubectl, plugins)
+/k8s
+  deployment.yaml     # AKS Deployment: 2 replicas, liveness/readiness probes, no imagePullSecrets
+  service.yaml        # ClusterIP Service (port-forward only — no public endpoint yet)
 dockerfile            # multi-stage app image (build → extract → runtime)
-Jenkinsfile            # CI pipeline definition
+Jenkinsfile            # CI/CD pipeline definition
 /docs                 # architecture diagrams, screenshot inventory
 ```
 
@@ -173,6 +176,15 @@ without adding signal.
 | **Quality Gate** | `waitForQualityGate abortPipeline: true` — blocks on SonarQube's webhook callback (5-minute timeout), fails the build if the gate isn't green |
 | **Docker Build** | `docker build` against the host engine via the mounted socket (DooD), tags `<build-number>` and `latest` |
 | **Trivy Scan** | `trivy image --severity CRITICAL,HIGH --exit-code 1` — fails the build on any CRITICAL/HIGH finding |
+| **Push to ACR** *(gated)* | `az acr login` + `docker push`, tags `<acr>.azurecr.io/northwind-quote:<build-number>` |
+| **Deploy to AKS** *(gated)* | `az aks get-credentials` then `kubectl apply` of `k8s/service.yaml` and `k8s/deployment.yaml` (image tag substituted in), waits on `kubectl rollout status` |
+| **Smoke Check** *(gated)* | Port-forwards the new Service and curls `/actuator/health/readiness`, confirming the rollout actually answers traffic, not just that Kubernetes reports it healthy |
+
+The three *(gated)* stages are written and present in the Jenkinsfile now but skipped
+unless the `DEPLOY_ENABLED` pipeline parameter is set to `true` — there is no ACR or AKS
+to deploy to yet (see [On the horizon](#on-the-horizon)). Writing them ahead of the
+infrastructure means the CD logic is reviewed and ready to flip on the moment Phase 7
+exists, rather than written under pressure once billable resources are already running.
 
 Pipeline options: `timestamps()`, a 30-minute overall timeout, and
 `disableConcurrentBuilds()` so overlapping runs can't race each other.
@@ -315,20 +327,19 @@ container's internal hostname/port on the shared `ci` network, not the host-mapp
 
 Not yet built, in rough order:
 
-1. **CD half of the Jenkinsfile** — push the scanned image to ACR, deploy to AKS, expose
-   via Service/Ingress, monitor rollout status.
-2. **Kubernetes manifests** for the app deployment.
-3. **Phase 7 — ACR + AKS Terraform module**, the first new billable infrastructure in
-   this project. Open decision at provisioning time: `az aks update --attach-acr`
-   (AcrPull role) for a non-ABAC registry vs. "Container Registry Repository Reader" for
-   an ABAC-enabled one.
-4. **AKS hardening** — a 2-node pool, resource requests/limits, liveness/readiness probes
-   wired to the Actuator `/livez`/`/readyz` endpoints already exposed, HPA, NetworkPolicy,
-   Ingress + TLS, and ACR pulls via the AKS cluster's managed identity (no shared
-   credentials).
-5. **Key Vault** for the SonarQube token and any other secrets, with Jenkins granted a
-   managed identity with least-privilege vault access.
-6. **Monitoring/alerting** — Container Insights / Azure Monitor, with at least one real
+1. **Phase 7 — ACR + AKS Terraform module**, the first new billable infrastructure in
+   this project. The CD half of the Jenkinsfile (`k8s/deployment.yaml`,
+   `k8s/service.yaml`, the Push to ACR / Deploy to AKS / Smoke Check stages) is already
+   written and gated behind a `DEPLOY_ENABLED` parameter — this phase is what flips it
+   on. Decided ahead of provisioning: AKS pulls from ACR via its kubelet managed
+   identity (`az aks update --attach-acr`, AcrPull role), not `imagePullSecrets`; the app
+   is exposed via `ClusterIP` + port-forward only, no LoadBalancer/Ingress yet.
+2. **AKS hardening** — resource requests/limits (already set in `k8s/deployment.yaml`),
+   HPA, NetworkPolicy, Ingress + TLS, replacing the current port-forward-only exposure.
+3. **Key Vault** for the SonarQube token and any other secrets, with Jenkins granted a
+   managed identity with least-privilege vault access — replacing the service-principal
+   credential the CD stages currently assume.
+4. **Monitoring/alerting** — Container Insights / Azure Monitor, with at least one real
    alert rule.
 
 **Deliberately deferred** (documented, not built): VNet peering between the CI and AKS

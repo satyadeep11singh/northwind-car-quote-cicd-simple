@@ -37,11 +37,21 @@ Status legend: ✅ captured · ⏳ planned, not yet captured
 
 | Filename | Status | Description | README section |
 |---|---|---|---|
-| `docs/jenkins-pipeline-stages-green.png` | ⏳ | Portal: Jenkins stage view, all 6 stages green (Checkout → Build & Test → SonarQube Analysis → Quality Gate → Docker Build → Trivy Scan). | CI/CD pipeline |
+| `docs/jenkins-pipeline-stages-green.png` | ⏳ | Portal: Jenkins stage view, all 6 CI stages green (Checkout → Build & Test → SonarQube Analysis → Quality Gate → Docker Build → Trivy Scan). | CI/CD pipeline |
 | `docs/jenkins-build-test-junit.png` | ⏳ | Portal: JUnit test results trend/report published from the Build & Test stage. | CI/CD pipeline |
 | `docs/sonarqube-quality-gate-passed.png` | ⏳ | Portal: SonarQube quality gate detail showing "Passed". | CI/CD pipeline |
 | `docs/trivy-scan-clean.png` | ⏳ | CLI: Trivy scan output, zero CRITICAL/HIGH findings. | CI/CD pipeline |
 | `docs/docker-image-built.png` | ⏳ | CLI: `docker images` showing `northwind-quote:<build-number>` and `:latest` tags produced by the pipeline. | CI/CD pipeline |
+
+## CD pipeline run (requires Phase 7 — ACR + AKS — to exist; not yet captured)
+
+| Filename | Status | Description | README section |
+|---|---|---|---|
+| `docs/jenkins-pipeline-cd-stages-green.png` | ⏳ | Portal: Jenkins stage view with `DEPLOY_ENABLED=true`, all 9 stages green including Push to ACR / Deploy to AKS / Smoke Check. | CI/CD pipeline |
+| `docs/acr-image-pushed.png` | ⏳ | CLI (`az acr repository show-tags`) + Portal (ACR Repositories blade): the build-numbered image tag present in the registry. | CI/CD pipeline |
+| `docs/aks-rollout-status.png` | ⏳ | CLI: `kubectl rollout status deployment/northwind-quote` succeeding, plus `kubectl get pods` showing 2/2 ready. | CI/CD pipeline |
+| `docs/aks-smoke-check-pass.png` | ⏳ | CLI: the Smoke Check stage's `curl` against `/actuator/health/readiness` through the port-forward, returning UP. | CI/CD pipeline |
+| `docs/portal-aks-workloads.png` | ⏳ | Portal: AKS Workloads blade showing the `northwind-quote` Deployment, 2/2 pods running. | CI/CD pipeline |
 
 ## Problems found and fixed
 
@@ -64,7 +74,8 @@ Status legend: ✅ captured · ⏳ planned, not yet captured
 - Every pairing above should be **CLI + Portal/UI** where both exist, per the project's
   standing screenshot-pairing discipline — a CLI screenshot proves the underlying state,
   a Portal/UI screenshot proves it's visible the way a human operator would see it.
-- AKS/ACR-stage screenshots are not listed yet — added once Phase 7 (ACR + AKS Terraform
-  module) and the CD half of the Jenkinsfile exist.
+- AKS/ACR-stage screenshots are listed under "CD pipeline run" above but can't be
+  captured until Phase 7 (ACR + AKS Terraform module) is actually provisioned — the
+  manifests and Jenkinsfile stages exist now, the infrastructure does not yet.
 - When a shot is captured, flip its status to ✅ and add the capture date as a trailing
   note, e.g. `✅ (2026-07-02)`.

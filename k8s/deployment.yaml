@@ -1,0 +1,53 @@
+# ============================================================================
+# Northwind Mutual Car Quote Generator — AKS Deployment
+#
+# Image is pulled from ACR via the AKS kubelet identity (granted AcrPull
+# through `az aks update --attach-acr`) — no imagePullSecrets needed.
+# Liveness/readiness probes target Actuator's dedicated probe groups
+# (management.endpoint.health.probes.add-additional-paths=true is already
+# set in application.properties), not the combined /actuator/health endpoint,
+# so a slow dependency check can't flip the liveness probe and cause an
+# unnecessary restart.
+# ============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: northwind-quote
+  labels:
+    app: northwind-quote
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: northwind-quote
+  template:
+    metadata:
+      labels:
+        app: northwind-quote
+    spec:
+      containers:
+        - name: northwind-quote
+          # Jenkins replaces this at deploy time with the ACR-qualified,
+          # build-numbered tag (see Jenkinsfile "Deploy to AKS" stage).
+          image: IMAGE_PLACEHOLDER
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 5

@@ -1,12 +1,14 @@
 // ============================================================================
-// Northwind Mutual Car Quote Generator — CI pipeline (Phase 3).
+// Northwind Mutual Car Quote Generator — CI/CD pipeline.
 //
 // Stages: Checkout -> Build & Test -> SonarQube analysis -> Quality Gate
-//         -> Docker build -> Trivy scan.
+//         -> Docker build -> Trivy scan -> ACR push -> AKS deploy -> Smoke check.
 //
-// ACR push and AKS deploy are added in Phases 5-6 once that infra exists; this
-// Jenkinsfile deliberately stops at "image built and scanned" so the entire
-// build-quality half is proven with zero Azure spend.
+// The ACR/AKS stages are written ahead of that infrastructure actually
+// existing (Phase 7, not yet provisioned) — they're guarded so the pipeline
+// still runs end-to-end (and stops cleanly) against the local-only stack.
+// Once ACR/AKS exist, set DEPLOY_ENABLED=true via a Jenkins credential/param
+// to exercise them for real.
 // ============================================================================
 pipeline {
     agent any
@@ -19,9 +21,23 @@ pipeline {
         disableConcurrentBuilds()
     }
 
+    parameters {
+        // Off by default: lets the CI half (build through Trivy scan) keep
+        // running standalone against the free local stack. Flip to true once
+        // ACR_NAME/AKS_CLUSTER/AKS_RESOURCE_GROUP point at real infra.
+        booleanParam(name: 'DEPLOY_ENABLED', defaultValue: false,
+            description: 'Push to ACR and deploy to AKS (requires Phase 7 infra to exist)')
+    }
+
     environment {
-        IMAGE_NAME = 'northwind-quote'
-        IMAGE_TAG  = "${env.BUILD_NUMBER}"
+        IMAGE_NAME          = 'northwind-quote'
+        IMAGE_TAG           = "${env.BUILD_NUMBER}"
+        // Populated once Phase 7 (ACR + AKS Terraform module) is provisioned.
+        ACR_NAME            = ''
+        AKS_CLUSTER_NAME    = ''
+        AKS_RESOURCE_GROUP  = ''
+        K8S_NAMESPACE       = 'default'
+        AZURE_TENANT_ID     = '892a000d-d8af-4fd6-9936-7b358542b184'
     }
 
     stages {
@@ -87,6 +103,65 @@ pipeline {
                       --exit-code 1 \
                       --no-progress \
                       ${IMAGE_NAME}:${IMAGE_TAG}
+                """
+            }
+        }
+
+        stage('Push to ACR') {
+            when { expression { params.DEPLOY_ENABLED } }
+            steps {
+                // 'azure-sp' is a Jenkins "Username with password" credential:
+                // username = service principal appId, password = its secret.
+                // The SP needs AcrPush on the registry — nothing broader.
+                withCredentials([usernamePassword(credentialsId: 'azure-sp',
+                        usernameVariable: 'AZ_SP_ID', passwordVariable: 'AZ_SP_SECRET')]) {
+                    sh """
+                        az login --service-principal -u "\$AZ_SP_ID" -p "\$AZ_SP_SECRET" --tenant "\$AZURE_TENANT_ID"
+                        az acr login --name ${ACR_NAME}
+                        docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}
+                        docker push ${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}
+                    """
+                }
+            }
+        }
+
+        stage('Deploy to AKS') {
+            when { expression { params.DEPLOY_ENABLED } }
+            steps {
+                // Same service principal as the ACR push; it also needs
+                // Azure Kubernetes Service Cluster User role on the cluster.
+                // No imagePullSecrets in the manifests — AKS pulls via its
+                // own kubelet identity, granted AcrPull through
+                // `az aks update --attach-acr` at provisioning time.
+                withCredentials([usernamePassword(credentialsId: 'azure-sp',
+                        usernameVariable: 'AZ_SP_ID', passwordVariable: 'AZ_SP_SECRET')]) {
+                    sh """
+                        az login --service-principal -u "\$AZ_SP_ID" -p "\$AZ_SP_SECRET" --tenant "\$AZURE_TENANT_ID"
+                        az aks get-credentials \
+                          --name ${AKS_CLUSTER_NAME} \
+                          --resource-group ${AKS_RESOURCE_GROUP} \
+                          --overwrite-existing
+                        kubectl apply -f k8s/service.yaml -n ${K8S_NAMESPACE}
+                        sed "s#IMAGE_PLACEHOLDER#${ACR_NAME}.azurecr.io/${IMAGE_NAME}:${IMAGE_TAG}#" k8s/deployment.yaml \
+                          | kubectl apply -n ${K8S_NAMESPACE} -f -
+                        kubectl rollout status deployment/northwind-quote -n ${K8S_NAMESPACE} --timeout=180s
+                    """
+                }
+            }
+        }
+
+        stage('Smoke Check') {
+            when { expression { params.DEPLOY_ENABLED } }
+            steps {
+                // Confirms the new pods are actually answering, not just
+                // that the rollout reported success. Port-forward only —
+                // there's no public endpoint yet (ClusterIP, see k8s/service.yaml).
+                sh """
+                    kubectl port-forward svc/northwind-quote 18080:80 -n ${K8S_NAMESPACE} &
+                    PF_PID=\$!
+                    sleep 5
+                    curl -sf http://localhost:18080/actuator/health/readiness
+                    kill \$PF_PID
                 """
             }
         }

@@ -1,0 +1,16 @@
+# ============================================================================
+# ClusterIP only for this phase — reached via `kubectl port-forward`, not a
+# public endpoint. A LoadBalancer/Ingress is deferred to the AKS hardening
+# phase (see README "On the horizon"), once TLS termination is in place.
+# ============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: northwind-quote
+spec:
+  type: ClusterIP
+  selector:
+    app: northwind-quote
+  ports:
+    - port: 80
+      targetPort: 8080
