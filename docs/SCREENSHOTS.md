@@ -17,8 +17,9 @@ Status legend: ✅ captured · ⏳ planned, not yet captured
 
 | Filename | Status | Description | README section |
 |---|---|---|---|
-| `docs/app-ui-welcome.png` | ⏳ | Welcome page, Northwind navy theme, Bootstrap 5 nav. | The app |
-| `docs/app-ui-quote-form.png` | ✅ (2026-06-30) | Request-a-quote form (driver + vehicle + coverage fields). | The app |
+| `docs/app-ui-welcome-page.png` | ✅ (2026-06-30) | Welcome page — navy Northwind theme, Bootstrap 5 navbar, entry point to the app. | The app |
+| `docs/app-ui-quote-add-driver.png` | ✅ (2026-06-30) | Add driver form — name, date of birth, years licensed. | The app |
+| `docs/app-ui-quote-form.png` | ✅ (2026-06-30) | Quote request form — vehicle details and coverage choices. Updated screenshot. | The app |
 | `docs/app-ui-quote-result.png` | ✅ (2026-06-30) | A priced quote result, showing the full rating-factor breakdown. | The app |
 | `docs/app-tests-passing.png` | ✅ (2026-06-30) | CLI: `./mvnw test` output, 10/10 passing. | The app |
 | `docs/app-actuator-health.png` | ✅ (2026-06-26) | Browser: `/actuator/health` response showing UP. | The app |

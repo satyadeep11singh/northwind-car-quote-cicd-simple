@@ -105,10 +105,24 @@ base rate. Every intermediate factor is stored on the `Quote` so the result page
 full breakdown — not a single opaque number.
 
 The UI uses **Bootstrap 5 + Bootstrap Icons** (via WebJars) with a navy Northwind theme.
-The form below takes driver and vehicle details, then calculates and displays the quote
-with the complete rating-factor breakdown on the next screen.
+The flow is: land on the welcome page → add a driver → add a vehicle → request a quote →
+see the full premium breakdown.
 
-![Quote request form — driver and vehicle details entered before calculating a premium](./docs/app-ui-quote-form.png)
+The welcome page is the first thing a user sees — navy navbar, Bootstrap 5 layout, and
+navigation links to find drivers or start a new quote.
+
+![Welcome page — navy Northwind theme, Bootstrap 5 navbar, entry point to the app](./docs/app-ui-welcome-page.png)
+
+Before a quote can be requested, a driver record must exist. The add-driver form captures
+name, date of birth, and years of licence held — the three inputs the rating formula uses
+for the driver age and experience factors.
+
+![Add driver form — name, date of birth, and years licensed](./docs/app-ui-quote-add-driver.png)
+
+With a driver on file, a quote is requested by selecting the vehicle details and coverage
+choices. Every field maps directly to one of the five rating factors.
+
+![Quote request form — vehicle details and coverage choices entered before calculating a premium](./docs/app-ui-quote-form.png)
 
 ![Quote result — the annual premium with each rating factor broken down line by line](./docs/app-ui-quote-result.png)
 
