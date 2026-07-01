@@ -10,8 +10,8 @@ Status legend: ✅ captured · ⏳ planned, not yet captured
 
 | Filename | Status | Description |
 |---|---|---|
-| `docs/architecture-structural.png` | ⏳ | Structural diagram: app container, Jenkins container, SonarQube container, Docker network, host port mappings — the "what exists and how it's wired" view. |
-| `docs/architecture-pipeline.png` | ⏳ | Pipeline/flow diagram: all 9 stages annotated with what each produces/consumes and where the quality gates are. |
+| `docs/architecture.png` | ✅ (2026-06-30) | Structural diagram: laptop CI stack (Jenkins/SonarQube/app containers, DooD, Docker network), GitHub, and Azure infrastructure (VNet, ACR, AKS node pool, kubelet identity, state backend). |
+| `docs/pipeline.png` | ✅ (2026-06-30) | Pipeline/flow diagram: all 9 stages with quality gates, DEPLOY_ENABLED gate separating CI from CD, success/failure paths. |
 
 ## App layer
 

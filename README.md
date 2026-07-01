@@ -45,79 +45,9 @@ doesn't run its own Docker daemon, it talks to the host's Docker Desktop engine 
 mounted socket. This keeps the whole stack runnable on a laptop with no cloud dependency
 until the CD stage.
 
-```mermaid
-graph TB
-    subgraph DEV["Developer Laptop (Windows 11 / Docker Desktop / WSL2)"]
-        direction TB
-        subgraph CI_NET["Docker network: ci"]
-            direction LR
-            subgraph JENKINS["northwind-jenkins:local  •  :8081"]
-                J_CLI["Docker CLI + buildx"]
-                J_TRIVY["Trivy scanner"]
-                J_AZ["az CLI + kubectl"]
-                J_PLUG["Plugins: git · sonar · docker-workflow"]
-            end
-            subgraph SONAR["northwind-sonarqube:community  •  :9000"]
-                SQ_ANAL["Analysis engine"]
-                SQ_GATE["Quality gate"]
-                SQ_WH["Webhook → Jenkins :8080"]
-            end
-        end
-        subgraph APP_CTR["nwq (northwind-quote:local)  •  :8080"]
-            SPRING["Spring Boot 4.1 — Driver / Vehicle / Quote"]
-            H2["H2 in-memory DB"]
-            ACT["Actuator — /health · /prometheus · /livez · /readyz"]
-        end
-        DOCKER_SOCK["/var/run/docker.sock (Docker Desktop engine)"]
-    end
+![Structural architecture — laptop CI stack, GitHub, and Azure infrastructure](./docs/architecture.png)
 
-    subgraph GITHUB["GitHub — northwind-car-quote-cicd-simple"]
-        REPO["main branch — Jenkinsfile · dockerfile · k8s/ · infra/"]
-    end
-
-    subgraph AZURE["Azure — canadacentral  •  rg-northwind-quote-dev"]
-        direction TB
-        subgraph VNET["vnet-northwind-quote  10.40.0.0/16"]
-            SUBNET["snet-aks  10.40.1.0/24"]
-        end
-        ACR["Azure Container Registry\nacrnorthwindquote&lt;suffix&gt;  —  Basic SKU"]
-        subgraph AKS_CLUSTER["aks-northwind-quote-dev  —  Free tier · K8s 1.35"]
-            subgraph NODE["Standard_B2pls_v2 (ARM64, 2 vCPU)"]
-                POD1["northwind-quote pod 1  UID 65532"]
-                POD2["northwind-quote pod 2  UID 65532"]
-            end
-            SVC["Service: ClusterIP  80→8080"]
-            KI["Kubelet identity — AcrPull on ACR"]
-        end
-        TFSTATE["rg-northwind-tfstate / stnorthwindtf676746\n(persistent state backend — never destroy)"]
-    end
-
-    J_CLI -->|"DooD — buildx --platform linux/arm64"| DOCKER_SOCK
-    SQ_WH -->|"POST /sonarqube-webhook/"| JENKINS
-    JENKINS -->|"git checkout"| REPO
-    J_AZ -->|"az acr login · docker push"| ACR
-    J_AZ -->|"kubectl apply · port-forward"| AKS_CLUSTER
-    KI -->|"AcrPull role assignment (Terraform)"| ACR
-    ACR -->|"image pull (no imagePullSecrets)"| NODE
-    NODE --- SUBNET
-    SVC --> POD1
-    SVC --> POD2
-    AZURE -.->|"terraform state"| TFSTATE
-
-    style DEV fill:#1e2a3a,color:#fff,stroke:#3a5070
-    style CI_NET fill:#162032,color:#fff,stroke:#2a4060
-    style JENKINS fill:#0d2137,color:#fff,stroke:#1a4060
-    style SONAR fill:#0d2137,color:#fff,stroke:#1a4060
-    style APP_CTR fill:#0d2137,color:#fff,stroke:#1a4060
-    style AZURE fill:#003360,color:#fff,stroke:#0060aa
-    style VNET fill:#002550,color:#fff,stroke:#0050a0
-    style AKS_CLUSTER fill:#002550,color:#fff,stroke:#0050a0
-    style NODE fill:#001840,color:#fff,stroke:#004090
-    style GITHUB fill:#24292e,color:#fff,stroke:#444
-    style TFSTATE fill:#001030,color:#aaa,stroke:#334,stroke-dasharray:4 4
-```
-
-*Full diagram with design decision notes: [docs/architecture-structural.md](./docs/architecture-structural.md)*
+*Component breakdown and design decision notes: [docs/architecture-structural.md](./docs/architecture-structural.md)*
 
 ### Pipeline flow
 
@@ -131,44 +61,9 @@ are gated behind a `DEPLOY_ENABLED` pipeline parameter so the CI half runs stand
 against the free local stack, and the full 9-stage run fires only when infra is
 provisioned.
 
-```mermaid
-flowchart TD
-    GH(["GitHub — main branch"])
+![Pipeline flow — 9 stages from checkout to smoke check, with quality gates](./docs/pipeline.png)
 
-    subgraph LOCAL["Local stack — zero Azure spend"]
-        S1["① Checkout"] --> S2["② Build & Test\n./mvnw clean verify · 10 tests"]
-        S2 -->|"compiled classes"| S3["③ SonarQube Analysis\n./mvnw sonar:sonar"]
-        S3 --> SA["SonarQube\nanalysis + quality gate"]
-        SA -->|"webhook callback"| S4["④ Quality Gate\nwaitForQualityGate"]
-        S4 -->|"PASSED"| S5["⑤ Docker Build\nbuildx --platform linux/arm64 --load"]
-        S5 --> S6["⑥ Trivy Scan\n--severity CRITICAL,HIGH\n--exit-code 1"]
-    end
-
-    subgraph AZURE["Azure — DEPLOY_ENABLED=true"]
-        S7["⑦ Push to ACR\naz acr login · docker push"]
-        S8["⑧ Deploy to AKS\nkubectl apply · rollout status"]
-        S9["⑨ Smoke Check\nport-forward · curl /readiness"]
-    end
-
-    PASS(["✅ SUCCESS"])
-    FAIL(["❌ FAILURE — build aborts"])
-
-    GH --> S1
-    S6 -->|"zero findings"| S7
-    S7 --> S8
-    S8 --> S9
-    S9 --> PASS
-    S4 -->|"FAILED"| FAIL
-    S6 -->|"CVE found"| FAIL
-
-    style LOCAL fill:#1e2a3a,color:#fff,stroke:#3a5070
-    style AZURE fill:#003360,color:#fff,stroke:#0060aa
-    style PASS fill:#1a3a1a,color:#aaffaa,stroke:#2a6a2a
-    style FAIL fill:#3a1a1a,color:#ffaaaa,stroke:#6a2a2a
-    style GH fill:#24292e,color:#fff,stroke:#444
-```
-
-*Full diagram with stage-by-stage reference table and auth model: [docs/architecture-pipeline.md](./docs/architecture-pipeline.md)*
+*Stage-by-stage reference table and authentication model: [docs/architecture-pipeline.md](./docs/architecture-pipeline.md)*
 
 ---
 
